@@ -8,9 +8,7 @@
         "httpMethod": "POST",
         "path": "escalate-ticket",
         "responseMode": "responseNode",
-        "options": {
-          "onlyBody": true
-        }
+        "options": {}
       },
       "id": "580d8688-105d-46ec-a1a2-cf1a3f03959b",
       "name": "Webhook Trigger",
@@ -27,7 +25,7 @@
         "conditions": {
           "string": [
             {
-              "value1": "={{ $json.priority }}",
+              "value1": "={{ $json.body.priority }}",
               "value2": "HIGH"
             }
           ]
@@ -48,7 +46,7 @@
         "toEmail": "mahakalpawan@gmail.com",
         "subject": "🚨 High Priority Ticket Alert",
         "emailFormat": "text",
-        "text": "=🚨 HIGH PRIORITY TICKET DETECTED\n\nTicket ID: {{$json.ticketId}}\n\nTitle: {{$json.title}}\n\nCategory: {{$json.category}}\n\nPriority: {{$json.priority}}\n\nPlease investigate immediately.\n",
+        "text": "=🚨 HIGH PRIORITY TICKET DETECTED\n\nTicket ID: {{$json.body.ticketId}}\n\nTitle: {{$json.body.title}}\n\nCategory: {{$json.body.category}}\n\nPriority: {{$json.body.priority}}\n\nPlease investigate immediately.\n",
         "options": {}
       },
       "type": "n8n-nodes-base.emailSend",

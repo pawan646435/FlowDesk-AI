@@ -48,7 +48,13 @@ export default async function TicketsPage({ searchParams }: PageProps) {
             Create, view, and manage your active customer support requests.
           </p>
         </div>
-        <div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/tickets/test-escalation"
+            className="flex items-center gap-2 rounded-xl border border-border/40 hover:bg-muted px-4 py-2.5 text-sm font-semibold hover:text-foreground transition-all cursor-pointer"
+          >
+            Test Escalation
+          </Link>
           <CreateTicketDialog />
         </div>
       </div>

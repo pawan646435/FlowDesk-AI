@@ -51,38 +51,36 @@ export async function createTicket(userId: string, data: { title: string; descri
   });
 
   // 3. Trigger n8n webhook actions (outside transaction to prevent database connection timeouts)
-  if (ticket.category && ticket.priority) {
-    const payload = {
-      ticketId: ticket.id,
-      title: ticket.title,
-      category: ticket.category as "BILLING" | "REFUND" | "TECHNICAL" | "DELIVERY" | "ACCOUNT",
-      priority: ticket.priority as "LOW" | "MEDIUM" | "HIGH",
-    };
+  const payload = {
+    ticketId: ticket.id,
+    title: ticket.title,
+    category: (ticket.category || "TECHNICAL") as "BILLING" | "REFUND" | "TECHNICAL" | "DELIVERY" | "ACCOUNT",
+    priority: (ticket.priority || "LOW") as "LOW" | "MEDIUM" | "HIGH",
+  };
 
-    // Trigger New Ticket Webhook
-    const newTicketResponse = await triggerNewTicketWebhook(payload);
-    if (newTicketResponse.success) {
+  // Trigger New Ticket Webhook
+  const newTicketResponse = await triggerNewTicketWebhook(payload);
+  if (newTicketResponse.success) {
+    await prisma.activity.create({
+      data: {
+        userId,
+        ticketId: ticket.id,
+        action: "Workflow Triggered: New Ticket Automation",
+      },
+    });
+  }
+
+  // Trigger Escalation Webhook if Priority is High
+  if (ticket.priority === TicketPriority.HIGH) {
+    const escalationResponse = await triggerEscalationWebhook(payload);
+    if (escalationResponse.success) {
       await prisma.activity.create({
         data: {
           userId,
           ticketId: ticket.id,
-          action: "Workflow Triggered: New Ticket Automation",
+          action: "High Priority Escalated: Alert sent to On-Call",
         },
       });
-    }
-
-    // Trigger Escalation Webhook if Priority is High
-    if (ticket.priority === TicketPriority.HIGH) {
-      const escalationResponse = await triggerEscalationWebhook(payload);
-      if (escalationResponse.success) {
-        await prisma.activity.create({
-          data: {
-            userId,
-            ticketId: ticket.id,
-            action: "High Priority Escalated: Alert sent to On-Call",
-          },
-        });
-      }
     }
   }
 
