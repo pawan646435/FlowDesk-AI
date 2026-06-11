@@ -12,43 +12,44 @@ export async function createTicket(userId: string, data: { title: string; descri
     console.error("Gemini analysis failed during ticket creation:", err);
   }
 
-  // 2. Persist the ticket and core activities inside a database transaction
-  const ticket = await prisma.$transaction(async (tx) => {
-    const createdTicket = await tx.ticket.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        userId,
-        status: TicketStatus.OPEN,
-        category: aiResult?.category as TicketCategory | null,
-        priority: data.isHighPriority ? TicketPriority.HIGH : (aiResult?.priority as TicketPriority | null),
-        sentiment: aiResult?.sentiment as TicketSentiment | null,
-        suggestedReply: aiResult?.suggestedReply || null,
-      },
-    });
+  // 2. Persist the ticket and core activities sequentially
+  console.log(`[DB Transaction Audit] Starting sequential database operations for ticket creation...`);
+  const dbStartTime = Date.now();
 
-    // Log Creation Activity
-    await tx.activity.create({
-      data: {
-        userId,
-        ticketId: createdTicket.id,
-        action: `Created ticket: "${createdTicket.title}"`,
-      },
-    });
-
-    // Log AI Analysis Completion Activity
-    if (aiResult) {
-      await tx.activity.create({
-        data: {
-          userId,
-          ticketId: createdTicket.id,
-          action: `AI Analysis Completed: Category=${aiResult.category}, Priority=${aiResult.priority}, Sentiment=${aiResult.sentiment}`,
-        },
-      });
-    }
-
-    return createdTicket;
+  const ticket = await prisma.ticket.create({
+    data: {
+      title: data.title,
+      description: data.description,
+      userId,
+      status: TicketStatus.OPEN,
+      category: aiResult?.category as TicketCategory | null,
+      priority: data.isHighPriority ? TicketPriority.HIGH : (aiResult?.priority as TicketPriority | null),
+      sentiment: aiResult?.sentiment as TicketSentiment | null,
+      suggestedReply: aiResult?.suggestedReply || null,
+    },
   });
+
+  // Log Creation Activity
+  await prisma.activity.create({
+    data: {
+      userId,
+      ticketId: ticket.id,
+      action: `Created ticket: "${ticket.title}"`,
+    },
+  });
+
+  // Log AI Analysis Completion Activity
+  if (aiResult) {
+    await prisma.activity.create({
+      data: {
+        userId,
+        ticketId: ticket.id,
+        action: `AI Analysis Completed: Category=${aiResult.category}, Priority=${aiResult.priority}, Sentiment=${aiResult.sentiment}`,
+      },
+    });
+  }
+
+  console.log(`[DB Transaction Audit] Ticket creation database operations completed in ${Date.now() - dbStartTime}ms.`);
 
   // 3. Trigger n8n webhook actions (outside transaction to prevent database connection timeouts)
   const payload = {
@@ -112,30 +113,32 @@ export async function getTicketById(userId: string, ticketId: string) {
 }
 
 export async function updateTicketStatus(userId: string, ticketId: string, status: TicketStatus) {
-  return prisma.$transaction(async (tx) => {
-    const ticket = await tx.ticket.findFirst({
-      where: { id: ticketId, userId },
-    });
+  console.log(`[DB Transaction Audit] Starting sequential database operations for status update...`);
+  const dbStartTime = Date.now();
 
-    if (!ticket) {
-      throw new Error("Ticket not found");
-    }
-
-    const updatedTicket = await tx.ticket.update({
-      where: { id: ticketId },
-      data: { status },
-    });
-
-    await tx.activity.create({
-      data: {
-        userId,
-        ticketId,
-        action: `Changed status of "${ticket.title}" to ${status}`,
-      },
-    });
-
-    return updatedTicket;
+  const ticket = await prisma.ticket.findFirst({
+    where: { id: ticketId, userId },
   });
+
+  if (!ticket) {
+    throw new Error("Ticket not found");
+  }
+
+  const updatedTicket = await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { status },
+  });
+
+  await prisma.activity.create({
+    data: {
+      userId,
+      ticketId,
+      action: `Changed status of "${ticket.title}" to ${status}`,
+    },
+  });
+
+  console.log(`[DB Transaction Audit] Status update database operations completed in ${Date.now() - dbStartTime}ms.`);
+  return updatedTicket;
 }
 
 export async function getTicketStats(userId: string) {
