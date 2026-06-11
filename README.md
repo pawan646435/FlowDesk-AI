@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FlowDesk AI
 
-## Getting Started
+FlowDesk AI is a modern, production-ready, AI-powered customer support platform. This repository establishes the foundational architecture of the platform, including secure authentication, type-safe data modeling, service boundaries, input validation, and user interface panels.
 
-First, run the development server:
+## Tech Stack
+* **Framework**: Next.js 15 (App Router with Server Components & Actions)
+* **Language**: TypeScript
+* **Styling**: Tailwind CSS v4 & custom glassmorphism utilities
+* **Database & ORM**: PostgreSQL (Neon Serverless) with Prisma ORM
+* **Authentication**: Auth.js v5 (NextAuth) with Google OAuth 2.0
+* **Validation**: Zod (type-safe validation schemas)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Features (Foundation Phase)
+1. **Google OAuth & Session Management**: Secure authentication using OAuth 2.0, state management via signed JWT cookies, and page-level route guarding.
+2. **Database Modeling**: Normalized relationships between `User`, `Account`, `Session`, `Ticket`, and `Activity` tables.
+3. **Interactive Dashboard**: Aggregated real-time metrics showing total, open, and resolved support tickets alongside a global action timeline.
+4. **Ticket Lifecycle Management**: Create support requests, browse filtered listings, open dedicated detail panels, and transition ticket status via Server Action states.
+5. **Activity Log Auditing**: Chronological logs captured atomically inside transactions during lifecycle changes.
+
+## Directory Structure
+```text
+├── prisma/
+│   └── schema.prisma        # Database schema definitions
+├── src/
+│   ├── app/
+│   │   ├── api/auth/        # Catch-all endpoint for Auth.js
+│   │   ├── dashboard/       # Protected dashboard views
+│   │   ├── tickets/         # Ticket listings & detailed routes
+│   │   ├── login/           # Glassmorphic OAuth login screen
+│   │   ├── layout.tsx       # Global layouts, styles, and context wraps
+│   │   ├── page.tsx         # Landing page and marketing panels
+│   │   └── globals.css      # Core styles & Tailwind imports
+│   ├── components/
+│   │   ├── navbar.tsx       # Responsive layout header
+│   │   ├── providers.tsx    # Global React contexts
+│   │   ├── create-ticket-dialog.tsx # Native HTML dialog modal
+│   │   └── status-dropdown.tsx     # Status transitions with useTransition
+│   ├── lib/
+│   │   ├── prisma.ts        # PrismaClient connection singleton
+│   │   └── validation.ts    # Input Zod schemas
+│   ├── services/
+│   │   ├── ticket.service.ts   # Database CRUD for tickets & stats
+│   │   └── activity.service.ts # Activity logs query & writes
+│   ├── auth.ts              # Database-bound NextAuth setup
+│   ├── auth.config.ts       # Edge-compatible NextAuth providers
+│   └── middleware.ts        # Edge-runtime route-guard middleware
+├── .env.example             # Configuration settings template
+└── package.json             # NPM dependencies & task runners
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Security Measures
+* **Edge-compatible Middleware**: Path guarding prevents unauthenticated users from making requests to `/dashboard` or `/tickets` pages, executing before rendering.
+* **Server Action Validation**: Inbound values are parsed against Zod schemas on both the client (for user feedback) and server (for database validation) to protect database integrity.
+* **CSRF Protection**: Native cookie tokens generated by Auth.js protect against CSRF attacks.
+* **Prisma Connection Singleton**: Keeps connection pools lean, avoiding connection exhaustion in development hot reloads.
