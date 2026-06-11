@@ -8,6 +8,7 @@ export const createTicketSchema = z.object({
   description: z
     .string()
     .min(10, "Description must be at least 10 characters long"),
+  isHighPriority: z.boolean().optional(),
 });
 
 export const updateTicketStatusSchema = z.object({

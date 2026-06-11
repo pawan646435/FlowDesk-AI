@@ -1,43 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model User {
-  id            String    @id @default(cuid())
+  id            String     @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?    @unique
   emailVerified DateTime?
   image         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   accounts      Account[]
+  activities    Activity[]
   sessions      Session[]
   tickets       Ticket[]
-  activities    Activity[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
 }
 
 model Account {
-  id                String  @id @default(cuid())
+  id                String   @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -48,9 +47,9 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -61,6 +60,38 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model Ticket {
+  id             String           @id @default(cuid())
+  title          String
+  description    String
+  status         TicketStatus     @default(OPEN)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  userId         String
+  category       TicketCategory?
+  priority       TicketPriority?
+  sentiment      TicketSentiment?
+  suggestedReply String?
+  activities     Activity[]
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([priority])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  action    String
+  createdAt DateTime @default(now())
+  ticketId  String
+  userId    String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([ticketId])
 }
 
 enum TicketStatus {
@@ -87,36 +118,4 @@ enum TicketSentiment {
   POSITIVE
   NEUTRAL
   NEGATIVE
-}
-
-model Ticket {
-  id             String           @id @default(cuid())
-  title          String
-  description    String           @db.Text
-  status         TicketStatus     @default(OPEN)
-  category       TicketCategory?
-  priority       TicketPriority?
-  sentiment      TicketSentiment?
-  suggestedReply String?          @db.Text
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  userId         String
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activities     Activity[]
-
-  @@index([userId])
-  @@index([priority])
-}
-
-model Activity {
-  id        String   @id @default(cuid())
-  action    String
-  createdAt DateTime @default(now())
-  ticketId  String
-  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([ticketId])
 }

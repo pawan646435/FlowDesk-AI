@@ -3,7 +3,7 @@ import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment } from "@
 import { analyzeTicket } from "@/services/gemini.service";
 import { triggerNewTicketWebhook, triggerEscalationWebhook } from "@/services/n8n.service";
 
-export async function createTicket(userId: string, data: { title: string; description: string }) {
+export async function createTicket(userId: string, data: { title: string; description: string; isHighPriority?: boolean }) {
   // 1. Trigger AI classification prior to database transaction
   let aiResult = null;
   try {
@@ -21,7 +21,7 @@ export async function createTicket(userId: string, data: { title: string; descri
         userId,
         status: TicketStatus.OPEN,
         category: aiResult?.category as TicketCategory | null,
-        priority: aiResult?.priority as TicketPriority | null,
+        priority: data.isHighPriority ? TicketPriority.HIGH : (aiResult?.priority as TicketPriority | null),
         sentiment: aiResult?.sentiment as TicketSentiment | null,
         suggestedReply: aiResult?.suggestedReply || null,
       },

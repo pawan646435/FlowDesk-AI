@@ -14,8 +14,9 @@ export async function createTicketAction(prevState: unknown, formData: FormData)
 
   const title = formData.get("title") as string;
   const description = formData.get("description") as string;
+  const isHighPriority = formData.get("isHighPriority") === "true" || formData.get("isHighPriority") === "on";
 
-  const validation = createTicketSchema.safeParse({ title, description });
+  const validation = createTicketSchema.safeParse({ title, description, isHighPriority });
   if (!validation.success) {
     return {
       error: "Validation failed",

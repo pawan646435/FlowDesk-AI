@@ -107,6 +107,24 @@ export default async function TicketsPage({ searchParams }: PageProps) {
                     >
                       {ticket.status.replace("_", " ")}
                     </span>
+                    {ticket.priority && (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          ticket.priority === "HIGH"
+                            ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 animate-pulse"
+                            : ticket.priority === "MEDIUM"
+                            ? "bg-orange-500/10 text-orange-400 border border-orange-500/20"
+                            : "bg-slate-500/10 text-slate-400 border border-slate-500/20"
+                        }`}
+                      >
+                        {ticket.priority}
+                      </span>
+                    )}
+                    {ticket.category && (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border/40">
+                        {ticket.category.toLowerCase()}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {ticket.description}

@@ -43,7 +43,7 @@ export function CreateTicketDialog() {
       <dialog
         ref={dialogRef}
         onClick={handleBackdropClick}
-        className="rounded-2xl border border-border/40 p-0 w-full max-w-lg bg-background text-foreground shadow-2xl glass backdrop:bg-background/80 backdrop:backdrop-blur-sm focus:outline-none"
+        className="fixed inset-0 m-auto h-fit rounded-2xl border border-border/40 p-0 w-full max-w-lg bg-background text-foreground shadow-2xl glass backdrop:bg-background/80 backdrop:backdrop-blur-sm focus:outline-none"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">
           <h3 className="text-xl font-semibold">Create Support Ticket</h3>
@@ -92,6 +92,23 @@ export function CreateTicketDialog() {
                 {state.fieldErrors.description[0]}
               </p>
             )}
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-border/40 bg-background/30 p-4 transition-all hover:bg-background/50">
+            <input
+              type="checkbox"
+              id="isHighPriority"
+              name="isHighPriority"
+              className="mt-0.5 h-4 w-4 rounded border-border/60 bg-background text-primary focus:ring-primary focus:ring-offset-background accent-primary cursor-pointer transition-all"
+            />
+            <div className="flex flex-col">
+              <label htmlFor="isHighPriority" className="text-sm font-semibold text-foreground select-none cursor-pointer">
+                High Priority Escalation
+              </label>
+              <span className="text-xs text-muted-foreground">
+                Flags this ticket as urgent and bypasses normal queue to alert support teams.
+              </span>
+            </div>
           </div>
 
           {state?.error && !state?.fieldErrors && (

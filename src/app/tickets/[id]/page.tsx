@@ -40,7 +40,7 @@ export default async function TicketDetailsPage({ params }: PageProps) {
       <div className="rounded-2xl border border-border/40 p-6 sm:p-8 glass space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/20 pb-6">
           <div className="space-y-1">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <span
                 className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   ticket.status === "OPEN"
@@ -52,6 +52,24 @@ export default async function TicketDetailsPage({ params }: PageProps) {
               >
                 {ticket.status.replace("_", " ")}
               </span>
+              {ticket.priority && (
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    ticket.priority === "HIGH"
+                      ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 animate-pulse"
+                      : ticket.priority === "MEDIUM"
+                      ? "bg-orange-500/10 text-orange-400 border border-orange-500/20"
+                      : "bg-slate-500/10 text-slate-400 border border-slate-500/20"
+                  }`}
+                >
+                  {ticket.priority}
+                </span>
+              )}
+              {ticket.category && (
+                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border/40">
+                  {ticket.category.toLowerCase()}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground">ID: {ticket.id}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-2">
