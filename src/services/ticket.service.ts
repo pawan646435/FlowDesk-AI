@@ -60,8 +60,8 @@ export async function createTicket(userId: string, data: { title: string; descri
     };
 
     // Trigger New Ticket Webhook
-    const workflowTriggered = await triggerNewTicketWebhook(payload);
-    if (workflowTriggered) {
+    const newTicketResponse = await triggerNewTicketWebhook(payload);
+    if (newTicketResponse.success) {
       await prisma.activity.create({
         data: {
           userId,
@@ -73,8 +73,8 @@ export async function createTicket(userId: string, data: { title: string; descri
 
     // Trigger Escalation Webhook if Priority is High
     if (ticket.priority === TicketPriority.HIGH) {
-      const escalationTriggered = await triggerEscalationWebhook(payload);
-      if (escalationTriggered) {
+      const escalationResponse = await triggerEscalationWebhook(payload);
+      if (escalationResponse.success) {
         await prisma.activity.create({
           data: {
             userId,

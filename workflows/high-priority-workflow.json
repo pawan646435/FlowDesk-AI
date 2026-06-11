@@ -1,21 +1,26 @@
 {
+  "id": "KBubFGfYhmY7ZY9U",
   "name": "High Priority Escalation Workflow",
+  "active": true,
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "escalate-ticket",
         "responseMode": "responseNode",
-        "options": {}
+        "options": {
+          "onlyBody": true
+        }
       },
-      "id": "webhook-trigger",
+      "id": "580d8688-105d-46ec-a1a2-cf1a3f03959b",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1.1,
       "position": [
-        100,
-        200
-      ]
+        -448,
+        112
+      ],
+      "webhookId": "a5c18735-4ed9-4681-a1e4-63cefc1ea127"
     },
     {
       "parameters": {
@@ -28,39 +33,64 @@
           ]
         }
       },
-      "id": "priority-check",
+      "id": "156329ed-4f5f-4edc-841c-a3b09466187b",
       "name": "Verify High Priority",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        320,
-        200
+        -224,
+        112
       ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "Pawankumar646435@gmail.com",
+        "toEmail": "mahakalpawan@gmail.com",
+        "subject": "🚨 High Priority Ticket Alert",
+        "emailFormat": "text",
+        "text": "=🚨 HIGH PRIORITY TICKET DETECTED\n\nTicket ID: {{$json.ticketId}}\n\nTitle: {{$json.title}}\n\nCategory: {{$json.category}}\n\nPriority: {{$json.priority}}\n\nPlease investigate immediately.\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "30ede658-10cf-4e23-aa80-98d236526bc4",
+      "name": "Send an Email",
+      "webhookId": "32e4e96f-6f1e-4598-965b-6151f5e0dc6e",
+      "credentials": {
+        "smtp": {
+          "id": "WgL8JKIW5utdWXIV",
+          "name": "SMTP account"
+        }
+      }
     },
     {
       "parameters": {
         "jsCode": "// Trigger actual notifications (e.g. Email, Slack, PagerDuty in production)\nconsole.log('CRITICAL ALERT - n8n Escalated High Priority Ticket:', $input.first().json);\nreturn {\n  json: {\n    status: \"escalated\",\n    message: \"Alert sent to on-call support engineers\",\n    escalatedAt: new Date().toISOString()\n  }\n};"
       },
-      "id": "escalate-action",
+      "id": "389374e1-3b06-4b39-96e0-156bbe31b901",
       "name": "Escalate Alert Log",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        540,
-        100
+        224,
+        0
       ]
     },
     {
       "parameters": {
         "jsCode": "return {\n  json: {\n    status: \"ignored\",\n    message: \"Ticket priority is not HIGH, escalation skipped\"\n  }\n};"
       },
-      "id": "no-op-action",
+      "id": "3b147e01-8c85-4cd0-8cb4-57f2ae83937c",
       "name": "No-Op Skip Log",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        540,
-        300
+        0,
+        208
       ]
     },
     {
@@ -68,13 +98,13 @@
         "respondWith": "allIncomingItems",
         "options": {}
       },
-      "id": "respond-node",
+      "id": "61a758dd-e1dd-4b9d-bd0b-95e2cd04c2c2",
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        780,
-        200
+        448,
+        80
       ]
     }
   ],
@@ -94,7 +124,7 @@
       "main": [
         [
           {
-            "node": "Escalate Alert Log",
+            "node": "Send an Email",
             "type": "main",
             "index": 0
           }
@@ -102,6 +132,17 @@
         [
           {
             "node": "No-Op Skip Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an Email": {
+      "main": [
+        [
+          {
+            "node": "Escalate Alert Log",
             "type": "main",
             "index": 0
           }

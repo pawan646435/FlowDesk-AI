@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth";
 import { createTicket, updateTicketStatus } from "@/services/ticket.service";
+import { triggerEscalationWebhook } from "@/services/n8n.service";
 import { createTicketSchema, updateTicketStatusSchema } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 import { TicketStatus } from "@prisma/client";
@@ -55,5 +56,27 @@ export async function updateTicketStatusAction(ticketId: string, status: TicketS
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Failed to update status";
     return { error: errorMessage };
+  }
+}
+
+export async function testEscalationAction() {
+  const session = await auth();
+  if (!session || !session.user?.id) {
+    return { error: "Unauthorized" };
+  }
+
+  const payload = {
+    ticketId: "test-escalation-" + Math.floor(100000 + Math.random() * 900000),
+    title: "Test Escalation: Brevo SMTP Delivery Verification",
+    category: "BILLING" as const,
+    priority: "HIGH" as const,
+  };
+
+  try {
+    const response = await triggerEscalationWebhook(payload);
+    return response;
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "Internal action execution error";
+    return { success: false, error: errorMessage };
   }
 }
