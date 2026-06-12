@@ -28,22 +28,27 @@ export async function triggerNewTicketWebhook(payload: WebhookPayload): Promise<
 
     console.log(`[n8n Service] Response received. Status: ${response.status}`);
 
+    // Always read as text first to avoid crashes on empty bodies
+    const rawText = await response.text();
+    console.log(`[n8n Service] Raw response body: ${rawText || "(empty)"}`);
+
     if (!response.ok) {
       console.error(`[n8n Service] Webhook failed with status ${response.status}`);
-      const text = await response.text();
-      console.error(`[n8n Service] Response body: ${text}`);
-      return { success: false, status: response.status, error: `HTTP ${response.status}: ${text}` };
+      return { success: false, status: response.status, error: `HTTP ${response.status}: ${rawText || "Empty response"}` };
     }
 
-    const contentType = response.headers.get("content-type");
+    // Safely attempt JSON parse
     let responseData: any = null;
-    if (contentType && contentType.includes("application/json")) {
-      responseData = await response.json();
-    } else {
-      responseData = await response.text();
+    if (rawText && rawText.trim().length > 0) {
+      try {
+        responseData = JSON.parse(rawText);
+      } catch {
+        console.warn(`[n8n Service] Response was not valid JSON, using raw text.`);
+        responseData = rawText;
+      }
     }
 
-    console.log(`[n8n Service] Success response data:`, JSON.stringify(responseData, null, 2));
+    console.log(`[n8n Service] Parsed response data:`, JSON.stringify(responseData, null, 2));
 
     return { success: true, status: response.status, data: responseData };
   } catch (error: any) {
@@ -75,22 +80,27 @@ export async function triggerEscalationWebhook(payload: WebhookPayload): Promise
 
     console.log(`[n8n Service] Response received. Status: ${response.status}`);
 
+    // Always read as text first to avoid crashes on empty bodies
+    const rawText = await response.text();
+    console.log(`[n8n Service] Raw response body: ${rawText || "(empty)"}`);
+
     if (!response.ok) {
       console.error(`[n8n Service] Webhook failed with status ${response.status}`);
-      const text = await response.text();
-      console.error(`[n8n Service] Response body: ${text}`);
-      return { success: false, status: response.status, error: `HTTP ${response.status}: ${text}` };
+      return { success: false, status: response.status, error: `HTTP ${response.status}: ${rawText || "Empty response"}` };
     }
 
-    const contentType = response.headers.get("content-type");
+    // Safely attempt JSON parse
     let responseData: any = null;
-    if (contentType && contentType.includes("application/json")) {
-      responseData = await response.json();
-    } else {
-      responseData = await response.text();
+    if (rawText && rawText.trim().length > 0) {
+      try {
+        responseData = JSON.parse(rawText);
+      } catch {
+        console.warn(`[n8n Service] Response was not valid JSON, using raw text.`);
+        responseData = rawText;
+      }
     }
 
-    console.log(`[n8n Service] Success response data:`, JSON.stringify(responseData, null, 2));
+    console.log(`[n8n Service] Parsed response data:`, JSON.stringify(responseData, null, 2));
 
     return { success: true, status: response.status, data: responseData };
   } catch (error: any) {
