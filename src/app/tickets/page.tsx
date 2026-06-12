@@ -131,6 +131,15 @@ export default async function TicketsPage({ searchParams }: PageProps) {
                         {ticket.category.toLowerCase()}
                       </span>
                     )}
+                    {ticket.source && (
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${
+                        ticket.source === "WHATSAPP"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                      }`}>
+                        {ticket.source.toLowerCase()}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {ticket.description}

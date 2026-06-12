@@ -165,6 +165,16 @@ function TicketQueueCard({ ticket, isHigh = false }: { ticket: any; isHigh?: boo
               SLA BREACHED
             </span>
           )}
+
+          {ticket.source && (
+            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold border ${
+              ticket.source === "WHATSAPP"
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+            }`}>
+              {ticket.source}
+            </span>
+          )}
         </div>
 
         <h3 className="text-lg font-bold text-foreground truncate group-hover:text-primary transition-colors">

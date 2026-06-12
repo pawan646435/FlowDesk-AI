@@ -77,6 +77,15 @@ export default async function TicketDetailsPage({ params }: PageProps) {
                   {ticket.category.toLowerCase()}
                 </span>
               )}
+              {ticket.source && (
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${
+                  ticket.source === "WHATSAPP"
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                }`}>
+                  Source: {ticket.source.toLowerCase()}
+                </span>
+              )}
               <span className="text-xs text-muted-foreground">ID: {ticket.id}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-2">

@@ -179,3 +179,217 @@ export async function analyzeTicket(title: string, description: string): Promise
     return getRuleBasedFallback(title, description);
   }
 }
+
+export interface WhatsAppHistoryItem {
+  sender: "CUSTOMER" | "AI" | "SYSTEM" | "AGENT";
+  text: string;
+  createdAt?: Date;
+}
+
+export interface WhatsAppAnalysisResult {
+  needsEscalation: boolean;
+  replyMessage: string;
+  ticketData?: {
+    title: string;
+    description: string;
+    category: "BILLING" | "TECHNICAL" | "REFUND" | "ACCOUNT_ACCESS" | "SUBSCRIPTION" | "GENERAL_INQUIRY";
+    priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    sentiment: "POSITIVE" | "NEUTRAL" | "NEGATIVE";
+    aiSummary: string;
+    keyIssues: string;
+    recommendedTeam: string;
+  };
+}
+
+const whatsappAnalysisSchema = z.object({
+  needsEscalation: z.boolean(),
+  replyMessage: z.string(),
+  ticketData: z.object({
+    title: z.string(),
+    description: z.string(),
+    category: z.enum(["BILLING", "TECHNICAL", "REFUND", "ACCOUNT_ACCESS", "SUBSCRIPTION", "GENERAL_INQUIRY"]),
+    priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+    sentiment: z.enum(["POSITIVE", "NEUTRAL", "NEGATIVE"]),
+    aiSummary: z.string(),
+    keyIssues: z.string(),
+    recommendedTeam: z.string(),
+  }).optional(),
+});
+
+export async function analyzeWhatsAppMessage(
+  incomingMessage: string,
+  history: WhatsAppHistoryItem[]
+): Promise<WhatsAppAnalysisResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  const getFallbackWhatsAppAnalysis = (msg: string): WhatsAppAnalysisResult => {
+    const lowerMsg = msg.toLowerCase();
+    const needsEscalation =
+      lowerMsg.includes("human") ||
+      lowerMsg.includes("agent") ||
+      lowerMsg.includes("person") ||
+      lowerMsg.includes("operator") ||
+      lowerMsg.includes("escalate") ||
+      lowerMsg.includes("error") ||
+      lowerMsg.includes("crash") ||
+      lowerMsg.includes("broken") ||
+      lowerMsg.includes("billing") ||
+      lowerMsg.includes("charge") ||
+      lowerMsg.includes("refund") ||
+      lowerMsg.includes("payment") ||
+      lowerMsg.includes("locked") ||
+      lowerMsg.includes("urgent") ||
+      lowerMsg.includes("fail") ||
+      lowerMsg.includes("not working");
+
+    if (needsEscalation) {
+      // Predict category
+      let category: "BILLING" | "TECHNICAL" | "REFUND" | "ACCOUNT_ACCESS" | "SUBSCRIPTION" | "GENERAL_INQUIRY" = "GENERAL_INQUIRY";
+      if (lowerMsg.includes("billing") || lowerMsg.includes("charge") || lowerMsg.includes("payment")) {
+        category = "BILLING";
+      } else if (lowerMsg.includes("refund")) {
+        category = "REFUND";
+      } else if (lowerMsg.includes("locked") || lowerMsg.includes("password") || lowerMsg.includes("login")) {
+        category = "ACCOUNT_ACCESS";
+      } else if (lowerMsg.includes("subscribe") || lowerMsg.includes("plan") || lowerMsg.includes("cancel")) {
+        category = "SUBSCRIPTION";
+      } else if (lowerMsg.includes("error") || lowerMsg.includes("crash") || lowerMsg.includes("broken") || lowerMsg.includes("not working")) {
+        category = "TECHNICAL";
+      }
+
+      const priority = lowerMsg.includes("urgent") || lowerMsg.includes("emergency") || lowerMsg.includes("immediate") ? "HIGH" : "MEDIUM";
+      const sentiment = "NEGATIVE";
+
+      const recommendedTeam = category === "BILLING" || category === "REFUND"
+        ? "Billing Operations"
+        : category === "ACCOUNT_ACCESS"
+        ? "Identity Security"
+        : category === "SUBSCRIPTION"
+        ? "Accounts & Growth"
+        : "Technical Support";
+
+      return {
+        needsEscalation: true,
+        replyMessage: "I understand you need assistance with a critical issue. I am transferring this conversation to a support agent and opening a ticket for you. An agent will contact you here shortly.",
+        ticketData: {
+          title: `WhatsApp Escalation: ${msg.slice(0, 40)}${msg.length > 40 ? "..." : ""}`,
+          description: `Conversation escalated from WhatsApp. Customer message: "${msg}"`,
+          category,
+          priority,
+          sentiment,
+          aiSummary: `WhatsApp customer requested escalation for: "${msg.slice(0, 50)}"`,
+          keyIssues: category.toLowerCase().replace("_", " "),
+          recommendedTeam,
+        },
+      };
+    } else {
+      return {
+        needsEscalation: false,
+        replyMessage: `[AI Assistant] Hello! Thank you for messaging FlowDesk AI. I'm here to help. If you have any technical bugs, billing queries, or login issues, please let me know. How can I help you today?`,
+      };
+    }
+  };
+
+  if (!apiKey || apiKey === "your-gemini-api-key" || apiKey.trim() === "") {
+    console.warn("GEMINI_API_KEY is not set. Utilizing fallback WhatsApp AI reply.");
+    return getFallbackWhatsAppAnalysis(incomingMessage);
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            needsEscalation: {
+              type: SchemaType.BOOLEAN,
+            },
+            replyMessage: {
+              type: SchemaType.STRING,
+            },
+            ticketData: {
+              type: SchemaType.OBJECT,
+              properties: {
+                title: { type: SchemaType.STRING },
+                description: { type: SchemaType.STRING },
+                category: {
+                  type: SchemaType.STRING,
+                  format: "enum",
+                  enum: ["BILLING", "TECHNICAL", "REFUND", "ACCOUNT_ACCESS", "SUBSCRIPTION", "GENERAL_INQUIRY"],
+                },
+                priority: {
+                  type: SchemaType.STRING,
+                  format: "enum",
+                  enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                },
+                sentiment: {
+                  type: SchemaType.STRING,
+                  format: "enum",
+                  enum: ["POSITIVE", "NEUTRAL", "NEGATIVE"],
+                },
+                aiSummary: { type: SchemaType.STRING },
+                keyIssues: { type: SchemaType.STRING },
+                recommendedTeam: { type: SchemaType.STRING },
+              },
+              required: ["title", "description", "category", "priority", "sentiment", "aiSummary", "keyIssues", "recommendedTeam"],
+            },
+          },
+          required: ["needsEscalation", "replyMessage"],
+        },
+      },
+    });
+
+    const formattedHistory = history
+      .map((h) => `${h.sender === "CUSTOMER" ? "Customer" : "AI Assistant"}: ${h.text}`)
+      .join("\n");
+
+    const prompt = `
+      You are a conversational support agent for FlowDesk AI.
+      You are chatting with a customer on WhatsApp.
+      
+      Review the conversation history and the new message from the customer.
+      Decide if the customer needs human agent assistance (escalation) or if you can handle it via self-service.
+      
+      Conversation History:
+      ${formattedHistory || "(No previous messages)"}
+      
+      New Message:
+      Customer: ${incomingMessage}
+      
+      Guidelines:
+      1. needsEscalation: Set to true if:
+         - The customer explicitly asks for a human, agent, operator, person, or to escalate.
+         - The customer is expressing high frustration, anger, or urgency.
+         - The issue is a complex error, billing discrepancy, security breach, account lockout, or server outage that a generic AI cannot resolve directly.
+         Set to false if it's a general question, greeting, or something that can be answered immediately.
+      2. replyMessage:
+         - If needsEscalation is true: Empathize with the customer and politely explain that you are creating a support ticket and transferring them to a human team member. Mention that an agent will follow up soon.
+         - If needsEscalation is false: Reply directly to their question or provide self-service help in a helpful, friendly, and concise manner suited for WhatsApp messages (use bullet points or emojis if helpful).
+      3. ticketData:
+         - Provide this ONLY if needsEscalation is true. Do not include it if needsEscalation is false.
+         - Populate:
+           - title: A concise summary of the issue (e.g., "Locked out of billing portal").
+           - description: A clear description of the problem based on the message and history.
+           - category: Choose from: BILLING, TECHNICAL, REFUND, ACCOUNT_ACCESS, SUBSCRIPTION, GENERAL_INQUIRY.
+           - priority: Choose from: LOW, MEDIUM, HIGH, CRITICAL. Set to HIGH/CRITICAL if it represents a serious billing issue or blocking bug, otherwise MEDIUM.
+           - sentiment: Choose from: POSITIVE, NEUTRAL, NEGATIVE.
+           - aiSummary: A one-sentence summary starting with "Customer reports..."
+           - keyIssues: Comma-separated list of 1-3 issues.
+           - recommendedTeam: Suggest a team like "Billing Operations", "Technical Support", "Security", or "Accounts".
+    `;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    console.log(`[AI Service WhatsApp] Raw AI output: ${text}`);
+
+    const parsed = JSON.parse(text);
+    return whatsappAnalysisSchema.parse(parsed) as WhatsAppAnalysisResult;
+  } catch (error) {
+    console.error("[AI Service WhatsApp] Gemini API call or validation failed, utilizing fallback:", error);
+    return getFallbackWhatsAppAnalysis(incomingMessage);
+  }
+}
+

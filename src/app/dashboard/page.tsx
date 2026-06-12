@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getTicketStats, getTickets } from "@/services/ticket.service";
 import { getRecentActivities } from "@/services/activity.service";
-import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert } from "lucide-react";
+import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert, MessageSquare, Smartphone } from "lucide-react";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -214,6 +214,61 @@ export default async function DashboardPage() {
               </>
             );
           })()}
+        </div>
+      </div>
+
+      {/* WhatsApp Channel Analytics */}
+      <div className="rounded-2xl border border-border/40 glass p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-emerald-450" />
+              WhatsApp Support Channel Analytics
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Live statistics from the WhatsApp conversational support assistant integration.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              href="/tickets/whatsapp-history"
+              className="text-xs font-semibold rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 px-3 py-1.5 transition-all cursor-pointer"
+            >
+              Open Inbox
+            </Link>
+            <Link
+              href="/tickets/whatsapp-simulator"
+              className="text-xs font-semibold rounded-lg bg-zinc-850 border border-zinc-700 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 transition-all cursor-pointer"
+            >
+              Open Simulator
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-border/25 bg-gradient-to-br from-emerald-600/5 to-teal-600/5 p-4 space-y-1">
+            <span className="text-xs text-muted-foreground block font-medium">WhatsApp Sessions</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold">{stats.whatsAppConversationCount}</span>
+              <span className="text-[10px] text-emerald-500 font-medium">Active / Resolved</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/25 bg-gradient-to-br from-blue-600/5 to-indigo-600/5 p-4 space-y-1">
+            <span className="text-xs text-muted-foreground block font-medium">Tickets via WhatsApp</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold">{stats.whatsAppTicketsCount}</span>
+              <span className="text-[10px] text-blue-400 font-medium">Source = WHATSAPP</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/25 bg-gradient-to-br from-zinc-650/5 to-zinc-700/5 p-4 space-y-1">
+            <span className="text-xs text-muted-foreground block font-medium">Tickets via Web Portal</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold">{stats.webTicketsCount}</span>
+              <span className="text-[10px] text-zinc-400 font-medium">Source = WEB</span>
+            </div>
+          </div>
         </div>
       </div>
 

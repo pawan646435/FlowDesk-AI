@@ -79,15 +79,18 @@ model Ticket {
   aiSummary       String?
   keyIssues       String?          // comma-separated or text issues list
   recommendedTeam String?
-  slaBreached     Boolean          @default(false)
-  escalatedAt     DateTime?
-  activities      Activity[]
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slaBreached          Boolean               @default(false)
+  escalatedAt          DateTime?
+  source               TicketSource          @default(WEB)
+  whatsAppConversation WhatsAppConversation?
+  activities           Activity[]
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([priority])
   @@index([aiPriority])
   @@index([slaBreached])
+  @@index([source])
 }
 
 model Activity {
@@ -131,5 +134,49 @@ enum TicketSentiment {
   POSITIVE
   NEUTRAL
   NEGATIVE
+}
+
+enum TicketSource {
+  WEB
+  WHATSAPP
+}
+
+enum WhatsAppConversationStatus {
+  ACTIVE
+  ESCALATED
+  RESOLVED
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  SYSTEM
+  AGENT
+}
+
+model WhatsAppConversation {
+  id           String                     @id @default(cuid())
+  phoneNumber  String                     @unique
+  customerName String?
+  status       WhatsAppConversationStatus @default(ACTIVE)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  ticketId     String?                    @unique
+  ticket       Ticket?                    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messages     WhatsAppMessage[]
+
+  @@index([status])
+}
+
+model WhatsAppMessage {
+  id             String               @id @default(cuid())
+  conversationId String
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         MessageSender
+  text           String
+  createdAt      DateTime             @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
 }
 

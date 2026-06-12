@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment } from "@prisma/client";
+import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment, TicketSource } from "@prisma/client";
 import { analyzeTicket } from "@/services/gemini.service";
 import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook } from "@/services/n8n.service";
 
@@ -159,12 +159,48 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
     },
   });
 
+  // Check for associated WhatsApp conversation and dispatch event-driven updates
+  try {
+    const whatsAppConv = await prisma.whatsAppConversation.findFirst({
+      where: { ticketId: ticketId }
+    });
+
+    if (whatsAppConv) {
+      const { sendWhatsAppMessage } = await import("@/services/whatsapp.service");
+      let messageText = `Update: Your ticket #${ticketId} ("${ticket.title}") status has been updated to ${status}.`;
+      
+      if (status === TicketStatus.RESOLVED) {
+        messageText = `Great news! Your ticket #${ticketId} ("${ticket.title}") has been resolved by our support team. If you have any further questions, feel free to send a message here. Thank you!`;
+        
+        // Mark WhatsApp conversation as RESOLVED so future messages start a fresh session
+        await prisma.whatsAppConversation.update({
+          where: { id: whatsAppConv.id },
+          data: { status: "RESOLVED" }
+        });
+      } else if (status === TicketStatus.IN_PROGRESS) {
+        messageText = `Update: Our engineering team is now actively working on your ticket #${ticketId} ("${ticket.title}"). We will keep you updated on progress.`;
+      }
+
+      await sendWhatsAppMessage(whatsAppConv.phoneNumber, messageText, whatsAppConv.id);
+    }
+  } catch (whatsappErr) {
+    console.error("Failed to send WhatsApp status update notification:", whatsappErr);
+  }
+
   console.log(`[DB Transaction Audit] Status update database operations completed in ${Date.now() - dbStartTime}ms.`);
   return updatedTicket;
 }
 
 export async function getTicketStats(userId: string) {
-  const [statusStats, slaBreachedStats, categoryStats, sentimentStats] = await Promise.all([
+  const [
+    statusStats, 
+    slaBreachedStats, 
+    categoryStats, 
+    sentimentStats,
+    whatsAppConversationCount,
+    whatsAppTicketsCount,
+    webTicketsCount
+  ] = await Promise.all([
     // Fetch status groupings
     prisma.ticket.groupBy({
       by: ['status'],
@@ -197,6 +233,14 @@ export async function getTicketStats(userId: string) {
       },
       _count: { id: true },
     }),
+    // WhatsApp session statistics
+    prisma.whatsAppConversation.count(),
+    prisma.ticket.count({
+      where: { userId, source: TicketSource.WHATSAPP }
+    }),
+    prisma.ticket.count({
+      where: { userId, source: TicketSource.WEB }
+    })
   ]);
 
   let total = 0;
@@ -230,6 +274,9 @@ export async function getTicketStats(userId: string) {
     slaBreachedCount: slaBreachedStats,
     categories,
     sentiments,
+    whatsAppConversationCount,
+    whatsAppTicketsCount,
+    webTicketsCount
   };
 }
 
