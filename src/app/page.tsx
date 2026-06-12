@@ -17,7 +17,7 @@ export default async function LandingPage() {
       <div className="mx-auto max-w-7xl px-6 pt-10 pb-24 sm:pb-32 lg:flex lg:px-8 lg:py-24">
         <div className="mx-auto max-w-2xl flex-shrink-0 lg:mx-0 lg:max-w-xl lg:pt-8">
           <div className="inline-flex items-center space-x-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium leading-6 text-primary ring-1 ring-inset ring-primary/20">
-            <span>FlowDesk AI Foundation v1.0</span>
+            <span>FlowDesk AI Foundation v2.0</span>
           </div>
           
           <h1 className="mt-10 text-4xl font-extrabold tracking-tight sm:text-6xl text-foreground">
@@ -28,7 +28,7 @@ export default async function LandingPage() {
           </h1>
           
           <p className="mt-6 text-lg leading-8 text-muted-foreground">
-            A production-ready ticketing platform designed for speed and clarity. Empower your support engineering workflows with real-time tracking, activity timelines, and robust security.
+            A production-ready ticketing platform supercharged with stateful n8n automation, real-time AI categorization, sentiment alerts, and intelligent support summaries.
           </p>
           
           <div className="mt-10 flex items-center gap-x-6">

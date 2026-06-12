@@ -63,22 +63,31 @@ model VerificationToken {
 }
 
 model Ticket {
-  id             String           @id @default(cuid())
-  title          String
-  description    String
-  status         TicketStatus     @default(OPEN)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  userId         String
-  category       TicketCategory?
-  priority       TicketPriority?
-  sentiment      TicketSentiment?
-  suggestedReply String?
-  activities     Activity[]
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String           @id @default(cuid())
+  title           String
+  description     String
+  status          TicketStatus     @default(OPEN)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  userId          String
+  category        TicketCategory?
+  priority        TicketPriority?
+  userPriority    TicketPriority?
+  aiPriority      TicketPriority?
+  sentiment       TicketSentiment?
+  suggestedReply  String?
+  aiSummary       String?
+  keyIssues       String?          // comma-separated or text issues list
+  recommendedTeam String?
+  slaBreached     Boolean          @default(false)
+  escalatedAt     DateTime?
+  activities      Activity[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([priority])
+  @@index([aiPriority])
+  @@index([slaBreached])
 }
 
 model Activity {
@@ -106,12 +115,16 @@ enum TicketCategory {
   TECHNICAL
   DELIVERY
   ACCOUNT
+  ACCOUNT_ACCESS
+  SUBSCRIPTION
+  GENERAL_INQUIRY
 }
 
 enum TicketPriority {
   LOW
   MEDIUM
   HIGH
+  CRITICAL
 }
 
 enum TicketSentiment {
@@ -119,3 +132,4 @@ enum TicketSentiment {
   NEUTRAL
   NEGATIVE
 }
+

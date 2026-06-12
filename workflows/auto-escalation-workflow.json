@@ -1,0 +1,259 @@
+{
+  "name": "V2 Stateful Auto-Escalation Workflow",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "escalate-ticket",
+        "responseMode": "responseNode",
+        "options": {
+          "onlyBody": true
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -600,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "{\n  \"status\": \"received\",\n  \"message\": \"Escalation queue registered. Monitoring SLA window.\"\n}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-immediate",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.priority }}",
+              "operation": "regex",
+              "value2": "^(HIGH|CRITICAL)$"
+            }
+          ]
+        }
+      },
+      "id": "verify-priority",
+      "name": "Verify Urgency",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "minutes"
+      },
+      "id": "wait-30-min",
+      "name": "Wait 30 Minutes",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://host.docker.internal:3000/api/tickets/{{ $json.body.ticketId }}",
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "Check Ticket Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "notEqual",
+              "value2": "RESOLVED"
+            }
+          ]
+        }
+      },
+      "id": "still-open",
+      "name": "Still Open?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "Pawankumar646435@gmail.com",
+        "toEmail": "mahakalpawan@gmail.com",
+        "subject": "=🚨 URGENT SLA BREACH: Ticket #{{ $json.id }} is still unresolved",
+        "emailFormat": "text",
+        "text": "=🚨 SLA ESCALATION NOTICE\n\nTicket ID: {{ $json.id }}\nTitle: {{ $json.title }}\nCategory: {{ $json.category }}\nPriority: {{ $json.priority }}\n\nThis high-priority ticket was created 30 minutes ago and is still in status: {{ $json.status }}.\n\nPlease address this immediately.\n",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Escalation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        600,
+        -100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "WgL8JKIW5utdWXIV",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:3000/api/tickets/{{ $node[\"Webhook Trigger\"].json.body.ticketId }}",
+        "options": {}
+      },
+      "id": "log-escalation",
+      "name": "Log SLA Breach",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        800,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: \"skipped\",\n    message: \"Ticket priority is not High/Critical, escalation workflow bypassed.\"\n  }\n};"
+      },
+      "id": "bypassed-log",
+      "name": "Bypassed Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Urgency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Urgency": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 Minutes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bypassed Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Check Ticket Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Ticket Status": {
+      "main": [
+        [
+          {
+            "node": "Still Open?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Open?": {
+      "main": [
+        [
+          {
+            "node": "Send Escalation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Escalation Email": {
+      "main": [
+        [
+          {
+            "node": "Log SLA Breach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

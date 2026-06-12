@@ -36,7 +36,8 @@ export default async function DashboardPage() {
       value: stats.open + stats.inProgress,
       icon: ListTodo,
       description: "Active requests",
-      color: "from-amber-600/20 to-orange-600/20 border-amber-500/20 text-amber-400",
+      color: "from-amber-600/20 to-orange-600/20 border-amber-500/20 text-amber-400 hover:scale-[1.02] transition-transform duration-200 cursor-pointer shadow-lg hover:border-amber-500/40",
+      href: "/tickets/queue",
     },
     {
       name: "Resolved Tickets",
@@ -46,10 +47,10 @@ export default async function DashboardPage() {
       color: "from-emerald-600/20 to-teal-600/20 border-emerald-500/20 text-emerald-400",
     },
     {
-      name: "High Priority",
-      value: stats.highPriorityCount,
+      name: "SLA Breached Tickets",
+      value: stats.slaBreachedCount,
       icon: ShieldAlert,
-      description: "Escalated to on-call",
+      description: "Requires immediate response",
       color: "from-rose-600/20 to-red-600/20 border-rose-500/20 text-rose-400",
     },
   ];
@@ -79,10 +80,9 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-4">
         {statsCards.map((card) => {
           const Icon = card.icon;
-          return (
+          const cardContent = (
             <div
-              key={card.name}
-              className={`relative overflow-hidden rounded-2xl border p-6 bg-gradient-to-br ${card.color} glass`}
+              className={`relative overflow-hidden rounded-2xl border p-6 bg-gradient-to-br ${card.color} glass h-full`}
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -96,6 +96,20 @@ export default async function DashboardPage() {
                 </div>
               </div>
               <p className="text-xs opacity-60 mt-4 text-foreground">{card.description}</p>
+            </div>
+          );
+
+          if (card.href) {
+            return (
+              <Link key={card.name} href={card.href} className="block h-full">
+                {cardContent}
+              </Link>
+            );
+          }
+
+          return (
+            <div key={card.name} className="h-full">
+              {cardContent}
             </div>
           );
         })}
@@ -128,38 +142,78 @@ export default async function DashboardPage() {
         </div>
 
         {/* AI Sentiment Distribution */}
-        <div className="rounded-2xl border border-border/40 glass p-6 space-y-4">
-          <h3 className="text-lg font-semibold">AI Sentiment Analytics</h3>
-          <div className="space-y-4">
-            {stats.sentiments.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">No sentiments processed yet.</p>
-            ) : (
-              stats.sentiments.map((s) => {
-                const percentage = Math.round((s.count / stats.total) * 100) || 0;
-                const color =
-                  s.sentiment === "POSITIVE"
-                    ? "bg-emerald-500"
-                    : s.sentiment === "NEGATIVE"
-                    ? "bg-rose-500"
-                    : "bg-amber-500";
-                return (
-                  <div key={s.sentiment} className="space-y-1.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-semibold capitalize text-muted-foreground">
-                        {s.sentiment.toLowerCase()}
-                      </span>
-                      <span className="text-xs font-bold text-foreground">
-                        {s.count} ({percentage}%)
-                      </span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-secondary/60 overflow-hidden border border-border/10">
-                      <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${percentage}%` }} />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+        <div className="rounded-2xl border border-border/40 glass p-6 space-y-6">
+          {(() => {
+            const negativeCount = stats.sentiments.find((s) => s.sentiment === "NEGATIVE")?.count || 0;
+            const negativeRatio = stats.total > 0 ? (negativeCount / stats.total) * 100 : 0;
+
+            return (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">AI Sentiment Analytics</h3>
+                  {negativeCount > 0 ? (
+                    <span className="rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1 text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                      {negativeCount} Negative
+                    </span>
+                  ) : (
+                    <span className="rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 text-xs font-bold">
+                      0 Negative
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  {stats.sentiments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4">No sentiments processed yet.</p>
+                  ) : (
+                    stats.sentiments.map((s) => {
+                      const percentage = Math.round((s.count / stats.total) * 100) || 0;
+                      const color =
+                        s.sentiment === "POSITIVE"
+                          ? "bg-emerald-500"
+                          : s.sentiment === "NEGATIVE"
+                          ? "bg-rose-500"
+                          : "bg-amber-500";
+                      return (
+                        <div key={s.sentiment} className="space-y-1.5">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-semibold capitalize text-muted-foreground">
+                              {s.sentiment.toLowerCase()}
+                            </span>
+                            <span className="text-xs font-bold text-foreground">
+                              {s.count} ({percentage}%)
+                            </span>
+                          </div>
+                          <div className="h-2.5 w-full rounded-full bg-secondary/60 overflow-hidden border border-border/10">
+                            <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${percentage}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Trend Analysis Alert Box */}
+                <div className={`rounded-xl border p-4 text-xs font-medium space-y-1 ${
+                  negativeRatio > 30 
+                    ? "bg-red-500/10 border-red-500/20 text-red-400"
+                    : negativeRatio > 10
+                    ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                    : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                }`}>
+                  <span className="font-bold uppercase tracking-wider block mb-0.5 text-xxs opacity-90">Trend Analysis</span>
+                  <p className="leading-relaxed opacity-95">
+                    {negativeRatio > 30 
+                      ? "🚨 HIGH RISK ALERT: More than 30% of active interactions are negative. Automated escalation webhooks are notifying Customer Success teams."
+                      : negativeRatio > 10
+                      ? "⚠️ WARNING TREND: Moderate levels of negative sentiment detected. CS teams should monitor the queue for escalations."
+                      : "💚 HEALTHY TREND: Support satisfaction levels are positive. Negative sentiment is within standard operational thresholds (<10%)."}
+                  </p>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 

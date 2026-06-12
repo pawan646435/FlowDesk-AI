@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment } from "@prisma/client";
 import { analyzeTicket } from "@/services/gemini.service";
-import { triggerNewTicketWebhook, triggerEscalationWebhook } from "@/services/n8n.service";
+import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook } from "@/services/n8n.service";
 
 export async function createTicket(userId: string, data: { title: string; description: string; isHighPriority?: boolean }) {
   // 1. Trigger AI classification prior to database transaction
@@ -16,6 +16,9 @@ export async function createTicket(userId: string, data: { title: string; descri
   console.log(`[DB Transaction Audit] Starting sequential database operations for ticket creation...`);
   const dbStartTime = Date.now();
 
+  const userPriority = data.isHighPriority ? TicketPriority.HIGH : TicketPriority.LOW;
+  const aiPriority = (aiResult?.priority as TicketPriority) || TicketPriority.LOW;
+
   const ticket = await prisma.ticket.create({
     data: {
       title: data.title,
@@ -23,9 +26,14 @@ export async function createTicket(userId: string, data: { title: string; descri
       userId,
       status: TicketStatus.OPEN,
       category: aiResult?.category as TicketCategory | null,
-      priority: data.isHighPriority ? TicketPriority.HIGH : (aiResult?.priority as TicketPriority | null),
+      priority: aiPriority,
+      userPriority: userPriority,
+      aiPriority: aiPriority,
       sentiment: aiResult?.sentiment as TicketSentiment | null,
       suggestedReply: aiResult?.suggestedReply || null,
+      aiSummary: aiResult?.aiSummary || null,
+      keyIssues: aiResult?.keyIssues || null,
+      recommendedTeam: aiResult?.recommendedTeam || null,
     },
   });
 
@@ -55,8 +63,8 @@ export async function createTicket(userId: string, data: { title: string; descri
   const payload = {
     ticketId: ticket.id,
     title: ticket.title,
-    category: (ticket.category || "TECHNICAL") as "BILLING" | "REFUND" | "TECHNICAL" | "DELIVERY" | "ACCOUNT",
-    priority: (ticket.priority || "LOW") as "LOW" | "MEDIUM" | "HIGH",
+    category: (ticket.category || "GENERAL_INQUIRY") as "BILLING" | "REFUND" | "TECHNICAL" | "DELIVERY" | "ACCOUNT" | "ACCOUNT_ACCESS" | "SUBSCRIPTION" | "GENERAL_INQUIRY",
+    priority: (ticket.priority || "LOW") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
   };
 
   // Trigger New Ticket Webhook
@@ -71,8 +79,8 @@ export async function createTicket(userId: string, data: { title: string; descri
     });
   }
 
-  // Trigger Escalation Webhook if Priority is High
-  if (ticket.priority === TicketPriority.HIGH) {
+  // Trigger Escalation Webhook if Priority is High or Critical
+  if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
     const escalationResponse = await triggerEscalationWebhook(payload);
     if (escalationResponse.success) {
       await prisma.activity.create({
@@ -80,6 +88,20 @@ export async function createTicket(userId: string, data: { title: string; descri
           userId,
           ticketId: ticket.id,
           action: "High Priority Escalated: Alert sent to On-Call",
+        },
+      });
+    }
+  }
+
+  // Trigger CS webhook if Sentiment is Negative
+  if (ticket.sentiment === TicketSentiment.NEGATIVE) {
+    const csResponse = await triggerNegativeSentimentWebhook(payload);
+    if (csResponse.success) {
+      await prisma.activity.create({
+        data: {
+          userId,
+          ticketId: ticket.id,
+          action: "Negative Sentiment Alert: Customer success team notified",
         },
       });
     }
@@ -142,18 +164,18 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
 }
 
 export async function getTicketStats(userId: string) {
-  const [statusStats, priorityStats, categoryStats, sentimentStats] = await Promise.all([
+  const [statusStats, slaBreachedStats, categoryStats, sentimentStats] = await Promise.all([
     // Fetch status groupings
     prisma.ticket.groupBy({
       by: ['status'],
       where: { userId },
       _count: { id: true },
     }),
-    // Fetch active high priority count (exclude resolved tickets)
+    // Fetch active SLA breached count (exclude resolved tickets)
     prisma.ticket.count({
       where: {
         userId,
-        priority: TicketPriority.HIGH,
+        slaBreached: true,
         status: { not: TicketStatus.RESOLVED },
       },
     }),
@@ -205,8 +227,23 @@ export async function getTicketStats(userId: string) {
     open,
     inProgress,
     resolved,
-    highPriorityCount: priorityStats,
+    slaBreachedCount: slaBreachedStats,
     categories,
     sentiments,
   };
 }
+
+export async function getQueueTickets(userId: string) {
+  return prisma.ticket.findMany({
+    where: {
+      userId,
+      status: { not: TicketStatus.RESOLVED },
+    },
+    include: {
+      user: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+
