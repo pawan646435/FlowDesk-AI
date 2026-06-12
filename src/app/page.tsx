@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { ArrowRight, Shield, Clock, BarChart3, Zap } from "lucide-react";
+import { ArrowRight, Shield, Clock, BarChart3, Zap, Smartphone, Sparkles } from "lucide-react";
 
 export default async function LandingPage() {
   const session = await auth();
@@ -16,19 +16,19 @@ export default async function LandingPage() {
 
       <div className="mx-auto max-w-7xl px-6 pt-10 pb-24 sm:pb-32 lg:flex lg:px-8 lg:py-24">
         <div className="mx-auto max-w-2xl flex-shrink-0 lg:mx-0 lg:max-w-xl lg:pt-8">
-          <div className="inline-flex items-center space-x-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium leading-6 text-primary ring-1 ring-inset ring-primary/20">
-            <span>FlowDesk AI Foundation v2.0</span>
+          <div className="inline-flex items-center space-x-2 rounded-full bg-emerald-500/10 px-3 py-1 text-sm font-medium leading-6 text-emerald-450 ring-1 ring-inset ring-emerald-500/20">
+            <span>FlowDesk AI Omnichannel v3.0</span>
           </div>
           
           <h1 className="mt-10 text-4xl font-extrabold tracking-tight sm:text-6xl text-foreground">
             Modern Customer Support,{" "}
-            <span className="bg-gradient-to-r from-primary via-indigo-300 to-indigo-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
               Simplified.
             </span>
           </h1>
           
           <p className="mt-6 text-lg leading-8 text-muted-foreground">
-            A production-ready ticketing platform supercharged with stateful n8n automation, real-time AI categorization, sentiment alerts, and intelligent support summaries.
+            A production-ready ticketing platform supercharged with stateful n8n automation, real-time AI categorization, sentiment alerts, intelligent support summaries, and now fully integrated with stateful **WhatsApp Support**.
           </p>
           
           <div className="mt-10 flex items-center gap-x-6">
@@ -54,12 +54,32 @@ export default async function LandingPage() {
           <div className="max-w-3xl flex-none sm:max-w-5xl lg:max-w-none">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:w-[36rem]">
               <div className="p-6 rounded-2xl glass border border-border/40 hover:border-primary/20 transition-all hover:-translate-y-1 duration-300">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 mb-4">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold text-lg">WhatsApp Channel</h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Full stateful conversational channel. Agents manually chat or let Gemini handle the support workflow.
+                </p>
+              </div>
+
+              <div className="p-6 rounded-2xl glass border border-border/40 hover:border-primary/20 transition-all hover:-translate-y-1 duration-300">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <h3 className="font-semibold text-lg">Gemini support agent</h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Autonomously answers self-service tickets, classifies sentiment/priority, and escalates when needed.
+                </p>
+              </div>
+
+              <div className="p-6 rounded-2xl glass border border-border/40 hover:border-primary/20 transition-all hover:-translate-y-1 duration-300">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
                   <Zap className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold text-lg">Next.js 15 App Router</h3>
+                <h3 className="font-semibold text-lg">Stateful n8n automation</h3>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Blazing fast server components, layouts, and route-level protection.
+                  Decoupled operational flows running ticket SLA timers, callbacks, alerts, and DB sync status updates.
                 </p>
               </div>
 
@@ -72,26 +92,6 @@ export default async function LandingPage() {
                   Enterprise-grade authentication with Google OAuth powered by Auth.js.
                 </p>
               </div>
-
-              <div className="p-6 rounded-2xl glass border border-border/40 hover:border-primary/20 transition-all hover:-translate-y-1 duration-300">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
-                  <Clock className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold text-lg">Activity Timeline</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Chronological logs showing exactly who changed what, and when.
-                </p>
-              </div>
-
-              <div className="p-6 rounded-2xl glass border border-border/40 hover:border-primary/20 transition-all hover:-translate-y-1 duration-300">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
-                  <BarChart3 className="h-5 w-5" />
-                </div>
-                <h3 className="font-semibold text-lg">Prisma & Postgres</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Fully type-safe Prisma client mapped directly to Neon PostgreSQL.
-                </p>
-              </div>
             </div>
           </div>
         </div>
@@ -99,3 +99,4 @@ export default async function LandingPage() {
     </div>
   );
 }
+
