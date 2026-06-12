@@ -5,72 +5,51 @@ export interface WebhookPayload {
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 }
 
-export async function triggerNewTicketWebhook(payload: WebhookPayload): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
-  const url = process.env.N8N_WEBHOOK_NEW_TICKET;
-
-  console.log(`[n8n Service] Initiating New Ticket Webhook...`);
-  console.log(`[n8n Service] URL: ${url}`);
-  console.log(`[n8n Service] Payload:`, JSON.stringify(payload, null, 2));
-
-  if (!url || url.trim() === "") {
-    console.warn("[n8n Service] N8N_WEBHOOK_NEW_TICKET is not configured. Skipping webhook trigger.");
-    return { success: false, error: "Webhook URL not configured" };
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log(`[n8n Service] Response received. Status: ${response.status}`);
-
-    // Always read as text first to avoid crashes on empty bodies
-    const rawText = await response.text();
-    console.log(`[n8n Service] Raw response body: ${rawText || "(empty)"}`);
-
-    if (!response.ok) {
-      console.error(`[n8n Service] Webhook failed with status ${response.status}`);
-      return { success: false, status: response.status, error: `HTTP ${response.status}: ${rawText || "Empty response"}` };
-    }
-
-    // Safely attempt JSON parse
-    let responseData: any = null;
-    if (rawText && rawText.trim().length > 0) {
-      try {
-        responseData = JSON.parse(rawText);
-      } catch {
-        console.warn(`[n8n Service] Response was not valid JSON, using raw text.`);
-        responseData = rawText;
+/**
+ * Helper function to perform fetch with exponential backoff retries.
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  delay = 500
+): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || attempt >= maxRetries) {
+        return response;
       }
+      console.warn(`[Retry Helper] Fetch failed with status ${response.status}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
+    } catch (err: any) {
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      console.warn(`[Retry Helper] Fetch failed with error: ${err.message}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
     }
-
-    console.log(`[n8n Service] Parsed response data:`, JSON.stringify(responseData, null, 2));
-
-    return { success: true, status: response.status, data: responseData };
-  } catch (error: any) {
-    console.error("[n8n Service] Exception during webhook execution:", error);
-    return { success: false, error: error.message || "Unknown error" };
+    attempt++;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay *= 2; // Exponential backoff
   }
 }
 
-export async function triggerEscalationWebhook(payload: WebhookPayload): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
-  const url = process.env.N8N_WEBHOOK_ESCALATION;
-
-  console.log(`[n8n Service] Initiating High Priority Escalation Webhook...`);
-  console.log(`[n8n Service] URL: ${url}`);
-  console.log(`[n8n Service] Payload:`, JSON.stringify(payload, null, 2));
+async function triggerWebhook(
+  webhookName: string,
+  url: string | undefined,
+  payload: WebhookPayload
+): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
+  console.log(`[n8n Service] [INFO] Initiating ${webhookName} Webhook...`);
+  console.log(`[n8n Service] [INFO] URL: ${url}`);
+  console.log(`[n8n Service] [INFO] Payload:`, JSON.stringify(payload, null, 2));
 
   if (!url || url.trim() === "") {
-    console.warn("[n8n Service] N8N_WEBHOOK_ESCALATION is not configured. Skipping webhook trigger.");
+    console.warn(`[n8n Service] [WARN] Webhook URL for ${webhookName} is not configured. Skipping webhook trigger.`);
     return { success: false, error: "Webhook URL not configured" };
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -78,65 +57,13 @@ export async function triggerEscalationWebhook(payload: WebhookPayload): Promise
       body: JSON.stringify(payload),
     });
 
-    console.log(`[n8n Service] Response received. Status: ${response.status}`);
-
-    // Always read as text first to avoid crashes on empty bodies
-    const rawText = await response.text();
-    console.log(`[n8n Service] Raw response body: ${rawText || "(empty)"}`);
-
-    if (!response.ok) {
-      console.error(`[n8n Service] Webhook failed with status ${response.status}`);
-      return { success: false, status: response.status, error: `HTTP ${response.status}: ${rawText || "Empty response"}` };
-    }
-
-    // Safely attempt JSON parse
-    let responseData: any = null;
-    if (rawText && rawText.trim().length > 0) {
-      try {
-        responseData = JSON.parse(rawText);
-      } catch {
-        console.warn(`[n8n Service] Response was not valid JSON, using raw text.`);
-        responseData = rawText;
-      }
-    }
-
-    console.log(`[n8n Service] Parsed response data:`, JSON.stringify(responseData, null, 2));
-
-    return { success: true, status: response.status, data: responseData };
-  } catch (error: any) {
-    console.error("[n8n Service] Exception during webhook execution:", error);
-    return { success: false, error: error.message || "Unknown error" };
-  }
-}
-
-export async function triggerNegativeSentimentWebhook(payload: WebhookPayload): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
-  const url = process.env.N8N_WEBHOOK_NEGATIVE_SENTIMENT;
-
-  console.log(`[n8n Service] Initiating Negative Sentiment Webhook...`);
-  console.log(`[n8n Service] URL: ${url}`);
-  console.log(`[n8n Service] Payload:`, JSON.stringify(payload, null, 2));
-
-  if (!url || url.trim() === "") {
-    console.warn("[n8n Service] N8N_WEBHOOK_NEGATIVE_SENTIMENT is not configured. Skipping webhook trigger.");
-    return { success: false, error: "Webhook URL not configured" };
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log(`[n8n Service] Response received. Status: ${response.status}`);
+    console.log(`[n8n Service] [INFO] Response received for ${webhookName}. Status: ${response.status}`);
 
     const rawText = await response.text();
-    console.log(`[n8n Service] Raw response body: ${rawText || "(empty)"}`);
+    console.log(`[n8n Service] [INFO] Raw response body: ${rawText || "(empty)"}`);
 
     if (!response.ok) {
-      console.error(`[n8n Service] Webhook failed with status ${response.status}`);
+      console.error(`[n8n Service] [ERROR] ${webhookName} Webhook failed with status ${response.status}`);
       return { success: false, status: response.status, error: `HTTP ${response.status}: ${rawText || "Empty response"}` };
     }
 
@@ -145,17 +72,31 @@ export async function triggerNegativeSentimentWebhook(payload: WebhookPayload): 
       try {
         responseData = JSON.parse(rawText);
       } catch {
-        console.warn(`[n8n Service] Response was not valid JSON, using raw text.`);
+        console.warn(`[n8n Service] [WARN] Response was not valid JSON, using raw text.`);
         responseData = rawText;
       }
     }
 
-    console.log(`[n8n Service] Parsed response data:`, JSON.stringify(responseData, null, 2));
-
+    console.log(`[n8n Service] [INFO] Parsed response data:`, JSON.stringify(responseData, null, 2));
     return { success: true, status: response.status, data: responseData };
   } catch (error: any) {
-    console.error("[n8n Service] Exception during webhook execution:", error);
+    console.error(`[n8n Service] [ERROR] Exception during ${webhookName} webhook execution:`, error);
     return { success: false, error: error.message || "Unknown error" };
   }
 }
 
+export async function triggerNewTicketWebhook(payload: WebhookPayload) {
+  return triggerWebhook("New Ticket", process.env.N8N_WEBHOOK_NEW_TICKET, payload);
+}
+
+export async function triggerEscalationWebhook(payload: WebhookPayload) {
+  return triggerWebhook("High Priority Escalation", process.env.N8N_WEBHOOK_ESCALATION, payload);
+}
+
+export async function triggerNegativeSentimentWebhook(payload: WebhookPayload) {
+  return triggerWebhook("Negative Sentiment", process.env.N8N_WEBHOOK_NEGATIVE_SENTIMENT, payload);
+}
+
+export async function triggerResolutionWebhook(payload: WebhookPayload) {
+  return triggerWebhook("Ticket Resolution", process.env.N8N_WEBHOOK_RESOLUTION, payload);
+}

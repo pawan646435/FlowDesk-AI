@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment, TicketSource } from "@prisma/client";
 import { analyzeTicket } from "@/services/gemini.service";
-import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook } from "@/services/n8n.service";
+import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook, triggerResolutionWebhook } from "@/services/n8n.service";
 
 export async function createTicket(userId: string, data: { title: string; description: string; isHighPriority?: boolean }) {
   // 1. Trigger AI classification prior to database transaction
@@ -158,6 +158,29 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
       action: `Changed status of "${ticket.title}" to ${status}`,
     },
   });
+
+  if (status === TicketStatus.RESOLVED) {
+    try {
+      const payload = {
+        ticketId: updatedTicket.id,
+        title: updatedTicket.title,
+        category: (updatedTicket.category || "GENERAL_INQUIRY") as any,
+        priority: (updatedTicket.priority || "LOW") as any,
+      };
+      const resolutionResponse = await triggerResolutionWebhook(payload);
+      if (resolutionResponse.success) {
+        await prisma.activity.create({
+          data: {
+            userId,
+            ticketId,
+            action: "Workflow Triggered: Ticket Resolution Automation",
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to trigger ticket resolution webhook:", err);
+    }
+  }
 
   // Check for associated WhatsApp conversation and dispatch event-driven updates
   try {

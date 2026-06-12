@@ -16,6 +16,35 @@ import {
 } from "@/services/n8n.service";
 
 /**
+ * Helper function to perform fetch with exponential backoff retries for Meta Messages API.
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  delay = 500
+): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || attempt >= maxRetries) {
+        return response;
+      }
+      console.warn(`[WhatsApp Service] [Retry Helper] Meta API call failed with status ${response.status}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
+    } catch (err: any) {
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      console.warn(`[WhatsApp Service] [Retry Helper] Meta API call failed with error: ${err.message}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
+    }
+    attempt++;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay *= 2;
+  }
+}
+
+/**
  * Sends an outgoing WhatsApp message.
  * Integrates with Meta Cloud API if credentials are configured,
  * otherwise runs in logged mock fallback mode.
@@ -64,7 +93,7 @@ export async function sendWhatsAppMessage(
 
   if (token && phoneId && token !== "mock" && phoneId !== "mock") {
     try {
-      const response = await fetch(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
+      const response = await fetchWithRetry(`https://graph.facebook.com/v17.0/${phoneId}/messages`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
