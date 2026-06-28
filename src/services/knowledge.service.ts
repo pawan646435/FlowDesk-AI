@@ -23,13 +23,10 @@ async function extractText(filePath: string, fileType: string): Promise<string> 
 
   if (extension.includes("pdf") || filePath.endsWith(".pdf")) {
     const dataBuffer = fs.readFileSync(filePath);
-    try {
-      const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
-      pdfParse.PDFParse.setWorker(workerPath);
-    } catch (workerErr) {
-      console.warn("[Knowledge Service] Could not resolve local pdf.worker.mjs:", workerErr);
-    }
-    const parser = new pdfParse.PDFParse({ data: dataBuffer });
+    const parser = new pdfParse.PDFParse({ 
+      data: dataBuffer,
+      disableWorker: true 
+    });
     const parsedData = await parser.getText();
     return parsedData.text || "";
   }
