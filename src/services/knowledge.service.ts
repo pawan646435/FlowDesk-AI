@@ -1,6 +1,9 @@
 import prisma from "@/lib/prisma";
 import fs from "fs";
 import path from "path";
+if (typeof global !== "undefined" && typeof (global as any).DOMMatrix === "undefined") {
+  (global as any).DOMMatrix = class DOMMatrix {};
+}
 const pdfParse = require("pdf-parse");
 import { execSync } from "child_process";
 import { generateEmbedding } from "./rag.service";
