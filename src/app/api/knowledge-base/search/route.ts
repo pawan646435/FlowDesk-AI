@@ -1,0 +1,29 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { generateEmbedding, searchSimilarity } from "@/services/rag.service";
+
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session || !session.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { query } = await req.json();
+
+    if (!query || query.trim() === "") {
+      return NextResponse.json({ error: "Query is required" }, { status: 400 });
+    }
+
+    const queryEmbedding = await generateEmbedding(query);
+    const results = await searchSimilarity(queryEmbedding, 5, 0.5); // lower threshold for manual testing UI
+
+    return NextResponse.json({
+      success: true,
+      results,
+    });
+  } catch (error: any) {
+    console.error("[Search API] Search error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

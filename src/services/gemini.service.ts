@@ -218,7 +218,8 @@ const whatsappAnalysisSchema = z.object({
 
 export async function analyzeWhatsAppMessage(
   incomingMessage: string,
-  history: WhatsAppHistoryItem[]
+  history: WhatsAppHistoryItem[],
+  userId?: string
 ): Promise<WhatsAppAnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -296,6 +297,54 @@ export async function analyzeWhatsAppMessage(
   }
 
   try {
+    // 1. RAG Retrieval Pipeline
+    let knowledgeContext = "";
+    try {
+      const { generateEmbedding, searchSimilarity } = await import("./rag.service");
+      const { default: prisma } = await import("@/lib/prisma");
+
+      const queryEmbedding = await generateEmbedding(incomingMessage);
+      const matchingChunks = await searchSimilarity(queryEmbedding, 5, 0.7);
+
+      if (matchingChunks.length > 0) {
+        knowledgeContext = matchingChunks
+          .map((chunk, idx) => `[Knowledge Source ${idx + 1}]: ${chunk.content}`)
+          .join("\n\n");
+        console.log(`[RAG Retrieval] Injected ${matchingChunks.length} chunks into context.`);
+      }
+
+      if (userId) {
+        const avgSim = matchingChunks.length > 0
+          ? matchingChunks.reduce((acc, c) => acc + c.similarity, 0) / matchingChunks.length
+          : 0;
+
+        let systemLogTicket = await prisma.ticket.findFirst({
+          where: { title: "RAG & System Operations Log" },
+        });
+
+        if (!systemLogTicket) {
+          systemLogTicket = await prisma.ticket.create({
+            data: {
+              title: "RAG & System Operations Log",
+              description: "System log for RAG performance tracking.",
+              userId,
+              status: "RESOLVED",
+            },
+          });
+        }
+
+        await prisma.activity.create({
+          data: {
+            userId,
+            ticketId: systemLogTicket.id,
+            action: `RAG_RETRIEVAL: Query='${incomingMessage.slice(0, 50)}...', ChunksFound=${matchingChunks.length}, AvgSimilarity=${avgSim.toFixed(3)}`,
+          },
+        });
+      }
+    } catch (ragErr) {
+      console.error("[RAG Retrieval] Error in retrieval pipeline:", ragErr);
+    }
+
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
@@ -349,16 +398,26 @@ export async function analyzeWhatsAppMessage(
     const prompt = `
       You are a conversational support agent for FlowDesk AI.
       You are chatting with a customer on WhatsApp.
-      
+
+      ${knowledgeContext ? `
+      KNOWLEDGE CONTEXT:
+      Use the following organizational knowledge to formulate your reply:
+      ${knowledgeContext}
+
+      Instructions:
+      - Ground your response strictly in the KNOWLEDGE CONTEXT above.
+      - If the context does not contain the answer, reply with standard general policies.
+      ` : ""}
+
       Review the conversation history and the new message from the customer.
       Decide if the customer needs human agent assistance (escalation) or if you can handle it via self-service.
-      
+
       Conversation History:
       ${formattedHistory || "(No previous messages)"}
-      
+
       New Message:
       Customer: ${incomingMessage}
-      
+
       Guidelines:
       1. needsEscalation: Set to true if:
          - The customer explicitly asks for a human, agent, operator, person, or to escalate.

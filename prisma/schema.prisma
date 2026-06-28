@@ -80,6 +80,10 @@ model Ticket {
   keyIssues       String?          // comma-separated or text issues list
   recommendedTeam String?
   slaBreached          Boolean               @default(false)
+  firstResponseDueAt   DateTime?
+  resolutionDueAt      DateTime?
+  firstResponseMet     Boolean?
+  breachedAt           DateTime?
   escalatedAt          DateTime?
   source               TicketSource          @default(WEB)
   whatsAppConversation WhatsAppConversation?
@@ -91,6 +95,8 @@ model Ticket {
   @@index([aiPriority])
   @@index([slaBreached])
   @@index([source])
+  @@index([firstResponseDueAt])
+  @@index([resolutionDueAt])
 }
 
 model Activity {
@@ -178,5 +184,28 @@ model WhatsAppMessage {
 
   @@index([conversationId])
   @@index([createdAt])
+}
+
+model KnowledgeDocument {
+  id        String          @id @default(cuid())
+  title     String
+  fileName  String
+  fileType  String
+  status    String          @default("PENDING") // PENDING, PROCESSING, INDEXED, FAILED
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  chunks    DocumentChunk[]
+}
+
+model DocumentChunk {
+  id         String            @id @default(cuid())
+  documentId String
+  chunkIndex Int
+  content    String
+  embedding  Unsupported("vector(3072)")?
+  createdAt  DateTime          @default(now())
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 

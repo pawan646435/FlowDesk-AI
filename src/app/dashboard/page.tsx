@@ -115,6 +115,49 @@ export default async function DashboardPage() {
         })}
       </div>
 
+      {/* SLA & Performance Overview */}
+      <div className="rounded-2xl border border-border/40 glass p-6 space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Clock className="h-5 w-5 text-indigo-400" />
+          SLA & Performance Metrics
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+            <span className="text-xs text-muted-foreground font-semibold block">Active SLAs</span>
+            <span className="text-2xl font-extrabold text-foreground mt-1.5 block">
+              {stats.sla?.activeSlas || 0}
+            </span>
+            <span className="text-[10px] text-muted-foreground block mt-1">Monitored active items</span>
+          </div>
+
+          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+            <span className="text-xs text-muted-foreground font-semibold block">Breached SLAs</span>
+            <span className={`text-2xl font-extrabold mt-1.5 block ${
+              (stats.sla?.breachedSlas || 0) > 0 ? "text-rose-400" : "text-foreground"
+            }`}>
+              {stats.sla?.breachedSlas || 0}
+            </span>
+            <span className="text-[10px] text-muted-foreground block mt-1">Exceeded target timeline</span>
+          </div>
+
+          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+            <span className="text-xs text-muted-foreground font-semibold block">SLA Compliance Rate</span>
+            <span className="text-2xl font-extrabold text-emerald-400 mt-1.5 block">
+              {stats.sla?.complianceRate ?? 100}%
+            </span>
+            <span className="text-[10px] text-muted-foreground block mt-1">Target resolution met</span>
+          </div>
+
+          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+            <span className="text-xs text-muted-foreground font-semibold block">Avg Agent Response</span>
+            <span className="text-2xl font-extrabold text-foreground mt-1.5 block">
+              {stats.sla?.averageResponseTime || 0} min
+            </span>
+            <span className="text-[10px] text-muted-foreground block mt-1">From ticket creation</span>
+          </div>
+        </div>
+      </div>
+
       {/* AI Analytics Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Ticket Categories breakdown */}

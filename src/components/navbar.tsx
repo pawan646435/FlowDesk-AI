@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { LayoutDashboard, Ticket, LogOut, User, Menu, X } from "lucide-react";
+import { LayoutDashboard, Ticket, LogOut, User, Menu, X, BookOpen } from "lucide-react";
 import { useState } from "react";
 
 export function Navbar() {
@@ -16,6 +16,7 @@ export function Navbar() {
   const navItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Tickets", href: "/tickets", icon: Ticket },
+    { name: "Knowledge Base", href: "/dashboard/knowledge-base", icon: BookOpen },
   ];
 
   return (

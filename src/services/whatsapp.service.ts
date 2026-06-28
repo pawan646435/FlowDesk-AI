@@ -196,21 +196,22 @@ export async function handleIncomingWhatsAppMessage(
     createdAt: m.createdAt
   }));
 
-  const aiResult = await analyzeWhatsAppMessage(text, historyItems);
+  // Fetch or create system agent user to track activity timeline
+  let systemUser = await prisma.user.findFirst();
+  if (!systemUser) {
+    systemUser = await prisma.user.create({
+      data: {
+        name: "System Agent",
+        email: "whatsapp-system@flowdesk.ai"
+      }
+    });
+  }
+
+  const aiResult = await analyzeWhatsAppMessage(text, historyItems, systemUser.id);
   console.log(`[WhatsApp Service] Gemini assessment for ${phoneNumber}: needsEscalation=${aiResult.needsEscalation}`);
 
   // 5. Handle Escalation Action
   if (aiResult.needsEscalation) {
-    // A. Fetch first user in DB to assign the ticket (or create system agent user if empty)
-    let systemUser = await prisma.user.findFirst();
-    if (!systemUser) {
-      systemUser = await prisma.user.create({
-        data: {
-          name: "System Agent",
-          email: "whatsapp-system@flowdesk.ai"
-        }
-      });
-    }
 
     // B. Build ticket properties from AI prediction
     const category = (aiResult.ticketData?.category as TicketCategory) || TicketCategory.GENERAL_INQUIRY;

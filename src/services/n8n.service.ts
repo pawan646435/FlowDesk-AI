@@ -100,3 +100,15 @@ export async function triggerNegativeSentimentWebhook(payload: WebhookPayload) {
 export async function triggerResolutionWebhook(payload: WebhookPayload) {
   return triggerWebhook("Ticket Resolution", process.env.N8N_WEBHOOK_RESOLUTION, payload);
 }
+
+export interface SlaBreachWebhookPayload {
+  ticketId: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  category: string;
+  customerName: string;
+  breachDuration: string;
+}
+
+export async function triggerSlaBreachWebhook(payload: SlaBreachWebhookPayload) {
+  return triggerWebhook("SLA Breach", process.env.N8N_WEBHOOK_SLA_BREACH || process.env.N8N_WEBHOOK_ESCALATION, payload as any);
+}

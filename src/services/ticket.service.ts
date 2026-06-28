@@ -18,6 +18,8 @@ export async function createTicket(userId: string, data: { title: string; descri
 
   const userPriority = data.isHighPriority ? TicketPriority.HIGH : TicketPriority.LOW;
   const aiPriority = (aiResult?.priority as TicketPriority) || TicketPriority.LOW;
+  const { calculateSLADeadlines } = await import("@/services/sla.service");
+  const sla = calculateSLADeadlines(aiPriority);
 
   const ticket = await prisma.ticket.create({
     data: {
@@ -34,6 +36,8 @@ export async function createTicket(userId: string, data: { title: string; descri
       aiSummary: aiResult?.aiSummary || null,
       keyIssues: aiResult?.keyIssues || null,
       recommendedTeam: aiResult?.recommendedTeam || null,
+      firstResponseDueAt: sla.firstResponseDueAt,
+      resolutionDueAt: sla.resolutionDueAt,
     },
   });
 
@@ -146,9 +150,13 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
     throw new Error("Ticket not found");
   }
 
+  const isResponseMet = status === TicketStatus.IN_PROGRESS || status === TicketStatus.RESOLVED;
   const updatedTicket = await prisma.ticket.update({
     where: { id: ticketId },
-    data: { status },
+    data: {
+      status,
+      ...(isResponseMet ? { firstResponseMet: true } : {})
+    },
   });
 
   await prisma.activity.create({
@@ -289,6 +297,9 @@ export async function getTicketStats(userId: string) {
     count: s._count.id,
   }));
 
+  const { getSLADashboardStats } = await import("@/services/sla.service");
+  const slaStats = await getSLADashboardStats(userId);
+
   return {
     total,
     open,
@@ -299,7 +310,8 @@ export async function getTicketStats(userId: string) {
     sentiments,
     whatsAppConversationCount,
     whatsAppTicketsCount,
-    webTicketsCount
+    webTicketsCount,
+    sla: slaStats
   };
 }
 

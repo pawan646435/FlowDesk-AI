@@ -1,0 +1,192 @@
+import prisma from "@/lib/prisma";
+import { TicketPriority, TicketStatus, TicketCategory } from "@prisma/client";
+import { triggerSlaBreachWebhook } from "./n8n.service";
+
+/**
+ * Calculates response and resolution SLA deadlines based on priority.
+ */
+export function calculateSLADeadlines(priority: TicketPriority) {
+  const now = new Date();
+  let responseMinutes = 4 * 60; // default LOW: 4 hours
+  let resolutionMinutes = 24 * 60; // default LOW: 24 hours
+
+  if (priority === TicketPriority.CRITICAL) {
+    responseMinutes = 15; // 15 mins
+    resolutionMinutes = 60; // 1 hour
+  } else if (priority === TicketPriority.HIGH) {
+    responseMinutes = 15; // 15 mins
+    resolutionMinutes = 60; // 1 hour
+  } else if (priority === TicketPriority.MEDIUM) {
+    responseMinutes = 60; // 1 hour
+    resolutionMinutes = 4 * 60; // 4 hours
+  }
+
+  const firstResponseDueAt = new Date(now.getTime() + responseMinutes * 60 * 1000);
+  const resolutionDueAt = new Date(now.getTime() + resolutionMinutes * 60 * 1000);
+
+  return { firstResponseDueAt, resolutionDueAt };
+}
+
+/**
+ * Checks all active tickets for SLA breaches. Sets breach flags and triggers notifications.
+ */
+export async function checkSLABreaches() {
+  const now = new Date();
+
+  // Find tickets that are not resolved, not yet marked as breached, and have passed due dates
+  const breachedTickets = await prisma.ticket.findMany({
+    where: {
+      status: { not: TicketStatus.RESOLVED },
+      slaBreached: false,
+      OR: [
+        {
+          firstResponseMet: { not: true },
+          firstResponseDueAt: { lt: now },
+        },
+        {
+          resolutionDueAt: { lt: now },
+        },
+      ],
+    },
+    include: {
+      user: true,
+      whatsAppConversation: true,
+    },
+  });
+
+  console.log(`[SLA Monitor] Found ${breachedTickets.length} newly breached tickets.`);
+
+  for (const ticket of breachedTickets) {
+    // Determine which limit was breached (first response or resolution)
+    const dueTime = !ticket.firstResponseMet && ticket.firstResponseDueAt && ticket.firstResponseDueAt < now
+      ? ticket.firstResponseDueAt
+      : ticket.resolutionDueAt || now;
+
+    const breachDurationMs = now.getTime() - dueTime.getTime();
+    const breachDurationMin = Math.max(0, Math.round(breachDurationMs / 60000));
+
+    // Update ticket state in DB
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        slaBreached: true,
+        breachedAt: now,
+      },
+    });
+
+    // Create system log activity
+    await prisma.activity.create({
+      data: {
+        userId: ticket.userId,
+        ticketId: ticket.id,
+        action: `SLA BREACHED: Ticket passed target deadline by ${breachDurationMin} minutes.`,
+      },
+    });
+
+    // Trigger n8n webhook
+    try {
+      const customerName = ticket.whatsAppConversation?.customerName || ticket.user.name || "System User";
+      await triggerSlaBreachWebhook({
+        ticketId: ticket.id,
+        priority: ticket.priority || TicketPriority.LOW,
+        category: ticket.category || "GENERAL_INQUIRY",
+        customerName,
+        breachDuration: `${breachDurationMin} minutes`,
+      });
+    } catch (webhookErr) {
+      console.error(`[SLA Monitor] Failed to trigger SLA breach webhook for ticket ${ticket.id}:`, webhookErr);
+    }
+  }
+
+  return breachedTickets.length;
+}
+
+/**
+ * Aggregates SLA statistics for the support dashboard metrics.
+ */
+export async function getSLADashboardStats(userId: string) {
+  const [
+    activeSlasCount,
+    breachedSlasCount,
+    resolvedCount,
+    resolvedCompliantCount,
+  ] = await Promise.all([
+    // Active SLAs (tickets under SLA monitoring that are not resolved)
+    prisma.ticket.count({
+      where: {
+        userId,
+        status: { not: TicketStatus.RESOLVED },
+        firstResponseDueAt: { not: null },
+      },
+    }),
+    // Breached active SLAs
+    prisma.ticket.count({
+      where: {
+        userId,
+        status: { not: TicketStatus.RESOLVED },
+        slaBreached: true,
+      },
+    }),
+    // Total resolved tickets
+    prisma.ticket.count({
+      where: {
+        userId,
+        status: TicketStatus.RESOLVED,
+      },
+    }),
+    // Compliant resolved tickets (resolved without breaching)
+    prisma.ticket.count({
+      where: {
+        userId,
+        status: TicketStatus.RESOLVED,
+        slaBreached: false,
+      },
+    }),
+  ]);
+
+  const complianceRate = resolvedCount > 0
+    ? Math.round((resolvedCompliantCount / resolvedCount) * 100)
+    : 100;
+
+  // Calculate Average Response Time for responded tickets
+  const ticketsWithResponse = await prisma.ticket.findMany({
+    where: {
+      userId,
+      firstResponseMet: true,
+    },
+    include: {
+      activities: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  let totalMinutes = 0;
+  let respondedCount = 0;
+
+  for (const ticket of ticketsWithResponse) {
+    const firstResponse = ticket.activities.find(
+      (a) =>
+        !a.action.startsWith("Created ticket") &&
+        !a.action.startsWith("AI Analysis") &&
+        !a.action.startsWith("Workflow Triggered")
+    );
+
+    if (firstResponse) {
+      const diffMs = firstResponse.createdAt.getTime() - ticket.createdAt.getTime();
+      totalMinutes += diffMs / (60 * 1000);
+      respondedCount++;
+    }
+  }
+
+  const averageResponseTime = respondedCount > 0
+    ? Math.round(totalMinutes / respondedCount)
+    : 0; // in minutes
+
+  return {
+    activeSlas: activeSlasCount,
+    breachedSlas: breachedSlasCount,
+    complianceRate,
+    averageResponseTime, // minutes
+  };
+}
