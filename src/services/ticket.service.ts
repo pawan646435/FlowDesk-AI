@@ -71,45 +71,59 @@ export async function createTicket(userId: string, data: { title: string; descri
     priority: (ticket.priority || "LOW") as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
   };
 
-  // Trigger New Ticket Webhook
-  const newTicketResponse = await triggerNewTicketWebhook(payload);
-  if (newTicketResponse.success) {
-    await prisma.activity.create({
-      data: {
-        userId,
-        ticketId: ticket.id,
-        action: "Workflow Triggered: New Ticket Automation",
-      },
-    });
-  }
-
-  // Trigger Escalation Webhook if Priority is High or Critical
-  if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
-    const escalationResponse = await triggerEscalationWebhook(payload);
-    if (escalationResponse.success) {
-      await prisma.activity.create({
-        data: {
-          userId,
-          ticketId: ticket.id,
-          action: "High Priority Escalated: Alert sent to On-Call",
-        },
-      });
+  // Trigger n8n Automation Webhooks asynchronously in the background
+  (async () => {
+    try {
+      const newTicketResponse = await triggerNewTicketWebhook(payload);
+      if (newTicketResponse.success) {
+        await prisma.activity.create({
+          data: {
+            userId,
+            ticketId: ticket.id,
+            action: "Workflow Triggered: New Ticket Automation",
+          },
+        });
+      }
+    } catch (err) {
+      console.error("[n8n Integration] Failed to trigger New Ticket webhook:", err);
     }
-  }
 
-  // Trigger CS webhook if Sentiment is Negative
-  if (ticket.sentiment === TicketSentiment.NEGATIVE) {
-    const csResponse = await triggerNegativeSentimentWebhook(payload);
-    if (csResponse.success) {
-      await prisma.activity.create({
-        data: {
-          userId,
-          ticketId: ticket.id,
-          action: "Negative Sentiment Alert: Customer success team notified",
-        },
-      });
+    // Trigger Escalation Webhook if Priority is High or Critical
+    if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
+      try {
+        const escalationResponse = await triggerEscalationWebhook(payload);
+        if (escalationResponse.success) {
+          await prisma.activity.create({
+            data: {
+              userId,
+              ticketId: ticket.id,
+              action: "High Priority Escalated: Alert sent to On-Call",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[n8n Integration] Failed to trigger Escalation webhook:", err);
+      }
     }
-  }
+
+    // Trigger CS webhook if Sentiment is Negative
+    if (ticket.sentiment === TicketSentiment.NEGATIVE) {
+      try {
+        const csResponse = await triggerNegativeSentimentWebhook(payload);
+        if (csResponse.success) {
+          await prisma.activity.create({
+            data: {
+              userId,
+              ticketId: ticket.id,
+              action: "Negative Sentiment Alert: Customer success team notified",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[n8n Integration] Failed to trigger Negative Sentiment webhook:", err);
+      }
+    }
+  })();
 
   return ticket;
 }
@@ -168,26 +182,29 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
   });
 
   if (status === TicketStatus.RESOLVED) {
-    try {
-      const payload = {
-        ticketId: updatedTicket.id,
-        title: updatedTicket.title,
-        category: (updatedTicket.category || "GENERAL_INQUIRY") as any,
-        priority: (updatedTicket.priority || "LOW") as any,
-      };
-      const resolutionResponse = await triggerResolutionWebhook(payload);
-      if (resolutionResponse.success) {
-        await prisma.activity.create({
-          data: {
-            userId,
-            ticketId,
-            action: "Workflow Triggered: Ticket Resolution Automation",
-          },
-        });
+    // Trigger Resolution Webhook asynchronously in the background
+    (async () => {
+      try {
+        const payload = {
+          ticketId: updatedTicket.id,
+          title: updatedTicket.title,
+          category: (updatedTicket.category || "GENERAL_INQUIRY") as any,
+          priority: (updatedTicket.priority || "LOW") as any,
+        };
+        const resolutionResponse = await triggerResolutionWebhook(payload);
+        if (resolutionResponse.success) {
+          await prisma.activity.create({
+            data: {
+              userId,
+              ticketId,
+              action: "Workflow Triggered: Ticket Resolution Automation",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("Failed to trigger ticket resolution webhook:", err);
       }
-    } catch (err) {
-      console.error("Failed to trigger ticket resolution webhook:", err);
-    }
+    })();
   }
 
   // Check for associated WhatsApp conversation and dispatch event-driven updates

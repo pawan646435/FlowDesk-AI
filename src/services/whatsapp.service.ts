@@ -276,42 +276,57 @@ export async function handleIncomingWhatsAppMessage(
       priority: priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
     };
 
-    const newTicketResponse = await triggerNewTicketWebhook(payload);
-    if (newTicketResponse.success) {
-      await prisma.activity.create({
-        data: {
-          userId: systemUser.id,
-          ticketId: ticket.id,
-          action: "Workflow Triggered: New Ticket Automation",
-        },
-      });
-    }
-
-    if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
-      const escalationResponse = await triggerEscalationWebhook(payload);
-      if (escalationResponse.success) {
-        await prisma.activity.create({
-          data: {
-            userId: systemUser.id,
-            ticketId: ticket.id,
-            action: "High Priority Escalated: Alert sent to On-Call",
-          },
-        });
+    // F. Trigger n8n Automation Webhooks asynchronously in the background
+    (async () => {
+      try {
+        const newTicketResponse = await triggerNewTicketWebhook(payload);
+        if (newTicketResponse.success) {
+          await prisma.activity.create({
+            data: {
+              userId: systemUser.id,
+              ticketId: ticket.id,
+              action: "Workflow Triggered: New Ticket Automation",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[n8n Integration] Failed to trigger New Ticket webhook from WhatsApp:", err);
       }
-    }
 
-    if (ticket.sentiment === TicketSentiment.NEGATIVE) {
-      const csResponse = await triggerNegativeSentimentWebhook(payload);
-      if (csResponse.success) {
-        await prisma.activity.create({
-          data: {
-            userId: systemUser.id,
-            ticketId: ticket.id,
-            action: "Negative Sentiment Alert: Customer success team notified",
-          },
-        });
+      if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
+        try {
+          const escalationResponse = await triggerEscalationWebhook(payload);
+          if (escalationResponse.success) {
+            await prisma.activity.create({
+              data: {
+                userId: systemUser.id,
+                ticketId: ticket.id,
+                action: "High Priority Escalated: Alert sent to On-Call",
+              },
+            });
+          }
+        } catch (err) {
+          console.error("[n8n Integration] Failed to trigger Escalation webhook from WhatsApp:", err);
+        }
       }
-    }
+
+      if (ticket.sentiment === TicketSentiment.NEGATIVE) {
+        try {
+          const csResponse = await triggerNegativeSentimentWebhook(payload);
+          if (csResponse.success) {
+            await prisma.activity.create({
+              data: {
+                userId: systemUser.id,
+                ticketId: ticket.id,
+                action: "Negative Sentiment Alert: Customer success team notified",
+              },
+            });
+          }
+        } catch (err) {
+          console.error("[n8n Integration] Failed to trigger Negative Sentiment webhook from WhatsApp:", err);
+        }
+      }
+    })();
 
     // G. Formulate response with the generated ticket ID
     const escalationReplyText = `${aiResult.replyMessage}\n\nTicket ID: #${ticket.id}`;
