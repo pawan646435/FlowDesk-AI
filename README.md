@@ -1,126 +1,156 @@
-# FlowDesk AI V3.0 (Omnichannel WhatsApp Support Channel)
+# FlowDesk AI (Omnichannel RAG Support & SLA Management Platform)
 
-FlowDesk AI is a modern, production-ready, AI-powered customer support platform. Supercharged with stateful n8n automation, real-time AI categorization, sentiment alerts, and intelligent support summaries, it is fully integrated with a production-hardened **WhatsApp Support Channel**.
+FlowDesk AI is a modern, enterprise-ready AI support desk and automation platform. It features stateful multi-turn customer messaging, real-time ticket triage (category, priority, sentiment analysis) using **Google Gemini**, automated service-level agreement tracking via a custom **SLA Engine**, and context-grounded AI agent replies powered by a **pgvector Retrieval-Augmented Generation (RAG)** pipeline.
 
 ---
 
-## 🏗️ Architecture & Data Flow
+## 🏗️ System Architecture & Data Flow
 
-FlowDesk AI V3.0 employs an asynchronous, secure event-driven architecture designed to meet Meta's strict 5-second webhook response SLA while running stateful multi-turn AI chat agents.
+FlowDesk AI uses a decoupled, event-driven, serverless-ready architecture. It handles heavy operations asynchronously to guarantee fast response times (specifically targeting Meta's strict 5-second webhook SLA).
 
-### Webhook & Message Flow Architecture
 ```mermaid
 sequenceDiagram
     autonumber
     actor Customer as WhatsApp Customer
     participant Meta as Meta Cloud API
-    participant n8n as n8n Automation Engine
     participant NextJS as Next.js Webhook Router
     participant DB as Neon (PostgreSQL)
     participant Gemini as Google Gemini AI
+    participant n8n as n8n Automation Engine
 
     Customer->>Meta: Sends text message
-    Meta->>n8n: POST Incoming Webhook (signed)
-    n8n->>NextJS: POST /api/webhooks/whatsapp
+    Meta->>NextJS: POST /api/webhooks/whatsapp (Signed)
     
-    Note over NextJS: 1. Validate signature (HMAC-SHA256)<br/>2. Validate unique Message ID
-    NextJS-->>n8n: Return HTTP 200 OK (Under 200ms)
-    n8n-->>Meta: Return HTTP 200 OK
+    Note over NextJS: 1. Validate Signature (HMAC-SHA256)<br/>2. Validate Message ID (Idempotency)
+    NextJS-->>Meta: Return HTTP 200 OK (Under 200ms)
     
-    Note over NextJS: Spawns Background Worker
-    rect rgb(240, 240, 240)
-        NextJS->>DB: Save customer message & fetch history
-        NextJS->>Gemini: Invoke AI Support Agent (Message history + Context)
-        Gemini-->>NextJS: Returns response text & needsEscalation evaluation
+    Note over NextJS: Spawn Background Worker (NextRequest.waitUntil)
+    rect rgb(30, 30, 30)
+        NextJS->>DB: Fetch/Create Conversation Session
+        NextJS->>DB: Query RAG context (pgvector <=> query)
+        NextJS->>Gemini: Invoke AI Support Agent (Query + Grounding Chunks)
+        Gemini-->>NextJS: Returns reply text & triage evaluation JSON
         
-        alt needsEscalation == true
-            NextJS->>DB: Auto-create Ticket (Category, Priority, Sentiment)
-            NextJS->>DB: Set Conversation state to ESCALATED
-            NextJS->>n8n: POST /webhook/new-ticket
-            NextJS->>n8n: POST /webhook/escalate-ticket
+        alt Needs Escalation == true
+            NextJS->>DB: Create Ticket (Category, Priority, Sentiment)
+            NextJS->>DB: Log Ticket Timeline Activities
+            NextJS->>n8n: POST /webhook/new-ticket (Non-blocking background)
+            NextJS->>n8n: POST /webhook/escalate-ticket (Non-blocking background)
         end
-
-        NextJS->>Meta: POST /v17.0/messages (Sends reply)
-        NextJS->>DB: Save outgoing message to DB
+        
+        NextJS->>Meta: Send outbound WhatsApp Reply API call
+        NextJS->>DB: Log outgoing message to DB
     end
     Meta->>Customer: Delivers WhatsApp reply
 ```
 
+For a comprehensive explanation of our database models, state transitions, and subsystems, please review the **[System Architecture Guide](file:///Users/pawan/Projects/Flowdesk%20AI/ARCHITECTURE.md)**.
+
 ---
 
-## 🛠️ Complete Technology Stack
+## 🛠️ Technology Stack
 
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
-| **Framework** | Next.js 15 (App Router) | Core server-side application hosting, API endpoints, Server Actions, and UI components. |
-| **Language** | TypeScript | Strong typing across services, routing parameters, and API responses. |
-| **Styling** | Tailwind CSS v4 | Responsive utility-first design with premium dark mode glassmorphism styles. |
-| **Database & ORM** | Neon PostgreSQL + Prisma | Stateful storage with automatic schema synchronization, cascading deletes, and indexed sessions. |
-| **AI Engine** | Google Generative AI | Gemini 2.5 Flash API handles dynamic client query responses and zero-shot ticket classification metadata. |
-| **Automation** | n8n Workflows | Workflow engine mapping alerts to external channels (Email/Slack) and orchestrating lifecycle hooks. |
-| **Security** | Auth.js v5 (NextAuth) | Multi-factor, secure OAuth 2.0 logins using Google Accounts. |
-| **Tunneling** | Cloudflare Tunnel (`cloudflared`) | Local development tunnel forwarding public Meta webhook calls securely into port 3000. |
+| **App Framework** | Next.js 15 (App Router) | Dynamic serverless route handlers, Server Actions, and client UI. |
+| **Language** | TypeScript | Strong typing across data payloads, routes, and services. |
+| **Styling** | Tailwind CSS v4 | Responsive layout with premium dark mode glassmorphism styles. |
+| **Database & ORM** | Neon Serverless PostgreSQL | High-performance state persistence with native pgvector support. |
+| **Database Client** | Prisma Client v6.19.3 | Structured ORM mapping model schemas and constraints. |
+| **AI Processing** | Google Generative AI | `gemini-2.5-flash` for classification/chat, `gemini-embedding-001` for vectors. |
+| **Automation** | n8n Engine | decoupled external email, Slack, and webhook alerting workflows. |
+| **Authentication** | Auth.js v5 (NextAuth) | Multi-factor secure OAuth 2.0 logins via Google Accounts. |
 
 ---
 
-## ⚡ Production Hardening & Security Features
+## ⚡ Enterprise SLA Matrix
 
-1. **HMAC-SHA256 Signature Verification**: Every POST webhook from Meta is validated against the `WHATSAPP_APP_SECRET` using timing-safe signature verification.
-2. **Replay & Idempotency Protection**: A sliding-window in-memory cache logs processed Meta `message_id`s. Duplicate deliveries (e.g., due to carrier retries) are dropped and immediately acknowledged with `200 OK` without wasting Gemini API tokens or DB writes.
-3. **Meta 5s Timeout Mitigation**: Separates heavy AI evaluation into background workers; Next.js acknowledges the Meta API within 200ms to eliminate Meta retry storms.
-4. **Exponential Outbound Retries**: Outbound WhatsApp dispatches and n8n triggers use exponential backoff retries (max 3 retries, starting at 500ms delay) to withstand transient network failures.
+FlowDesk AI calculates response and resolution deadlines automatically upon ticket creation:
+
+| Ticket Priority | Response Target Time | Resolution Target Time |
+| :--- | :--- | :--- |
+| **CRITICAL / HIGH** | 15 Minutes | 1 Hour |
+| **MEDIUM** | 1 Hour | 4 Hours |
+| **LOW** | 4 Hours | 24 Hours |
+
+- **SLA Breach Engine**: A background monitor scans active tickets, marks breached states, writes activity logs, and dispatches non-blocking webhooks to n8n to alert on-call teams.
 
 ---
 
-## 📂 Directory Structure
+## 🧠 Ingestion & RAG Pipeline
+
+FlowDesk AI implements a fully serverless-compliant Retrieval-Augmented Generation pipeline:
+1. **Document Extractor**: Parses `.txt` files, `.pdf` (using `pdf-parse` with DOMMatrix globals polyfilled), and `.docx` (using zip XML stream text extractor with binary scan fallbacks).
+2. **Text Segmenter**: Segments document text into 1000-character chunks with a 200-character overlap to preserve semantic context across chunk boundaries.
+3. **pgvector Storage**: Encodes chunks into 3072-dimensional vector arrays using `gemini-embedding-001` and stores them in Neon PostgreSQL.
+4. **Context Grounding**: Performs raw SQL cosine distance queries (`<=>`) to retrieve matching chunks above a $60\%$ similarity threshold and injects them directly into the Gemini chatbot context.
+5. **Stateless Cleanup**: Files are saved to a temporary directory (`/tmp`) and deleted immediately after chunking. The application has no persistent local filesystem dependencies.
+
+---
+
+## 📂 Repository Layout
 
 ```text
-├── docs/
-│   └── whatsapp-business-setup.md   # Setup guide for Meta Developer Portal, webhook routing & n8n
-├── scripts/
-│   └── test-whatsapp-flow.ts        # Integration test script for verifying API endpoints & DB
+├── ARCHITECTURE.md                  # Detailed system design & database schema
+├── DEPLOYMENT.md                    # Step-by-step setup (Neon, Google OAuth, Meta, Vercel)
+├── workflows/                       # Importable JSON configurations for n8n
+│   ├── whatsapp-incoming-workflow.json
+│   ├── whatsapp-resolution-workflow.json
+│   └── high-priority-workflow.json
 ├── prisma/
-│   └── schema.prisma        # Database schema definitions (includes TicketSource, WhatsApp Conversations)
-├── workflows/
-│   ├── whatsapp-incoming-workflow.json     # Intercepts incoming events and forwards to backend
-│   ├── whatsapp-resolution-workflow.json   # Handles ticket resolutions and session closure
-│   ├── high-priority-workflow.json         # Directs on-call alerts for high-priority tickets
-│   └── auto-escalation-workflow.json       # original n8n escalation template
+│   └── schema.prisma                # Prisma DB models, relations & vector definition
+├── scripts/
+│   └── test-sla-rag-flow.ts         # Complete SLA and RAG system integration test suite
 ├── src/
 │   ├── app/
-│   │   ├── api/
-│   │   │   ├── auth/        # Catch-all endpoint for Auth.js
-│   │   │   ├── tickets/     # GET/PATCH endpoints for n8n polling
-│   │   │   └── webhooks/whatsapp/  # Verification (GET) and incoming event (POST) webhook route
-│   │   ├── dashboard/       # Protected support dashboard views
-│   │   ├── tickets/         # Ticket listings, details, queues, and WhatsApp views
-│   │   │   ├── whatsapp-simulator/  # Web-based local WhatsApp phone simulator
-│   │   │   ├── whatsapp-history/    # Customer Inbox and chat transcript auditer
-│   │   │   └── whatsapp-actions.ts  # Server actions for WhatsApp management
-│   ├── lib/
-│   │   ├── prisma.ts        # PrismaClient connection singleton
-│   │   ├── config.ts        # Startup environment configuration schema validation
-│   │   └── validation.ts    # Input Zod schemas
+│   │   ├── api/                     # WhatsApp Webhooks & Knowledge Base upload APIs
+│   │   ├── dashboard/               # Support views & Knowledge Base control dashboard
+│   │   └── tickets/                 # Ticket listings, Customer Inbox & WhatsApp Simulator
+│   ├── components/                  # Shared React UI components
 │   ├── services/
-│   │   ├── ticket.service.ts   # Database CRUD, statistics & webhook dispatchers
-│   │   ├── gemini.service.ts   # Unified Gemini API integration & fallback parser
-│   │   ├── n8n.service.ts      # Webhook dispatch integrations with exponential retries
-│   │   ├── whatsapp.service.ts # Stateful WhatsApp coordinator with retry policies
-│   │   └── activity.service.ts # Activity logs query & writes
+│   │   ├── knowledge.service.ts     # Document Ingestion, PDF parser & chunker
+│   │   ├── rag.service.ts           # Gemini Embeddings & pgvector similarity search
+│   │   ├── sla.service.ts           # SLA calculators, monitoring & breaches
+│   │   ├── ticket.service.ts        # Database ticketing CRUD & metrics aggregates
+│   │   └── whatsapp.service.ts      # WhatsApp delivery, retry policies & timing handlers
+│   └── lib/
+│       └── prisma.ts                # PrismaClient singleton instance
 ```
 
 ---
 
-## 🚀 Setup & Verification
+## 🚀 Getting Started
 
-For detailed instructions on configuring the Meta Developer Portal, webhook callback routing, and n8n trigger integrations, please follow the **[WhatsApp Business API Setup Guide](file:///Users/pawan/Projects/Flowdesk%20AI/docs/whatsapp-business-setup.md)**.
-
-### Running the Verification Test Suite:
-To test the whole integration flow locally (incoming webhooks, signature checking, idempotency, ticket resolution):
+### 1. Installation
+Clone the repository and install the dependencies:
 ```bash
-# 1. Start the Next.js dev server:
-npm run dev
+git clone https://github.com/pawan646435/FlowDesk-AI.git
+cd FlowDesk-AI
+npm install
+```
 
-# 2. Run the integration test suite:
-npx tsx scripts/test-whatsapp-flow.ts
+### 2. Configure Environment Variables
+Copy the `.env.example` file and configure your credentials:
+```bash
+cp .env.example .env
+```
+*(For details on retrieving Google, Neon, Meta, and Gemini credentials, see [DEPLOYMENT.md](DEPLOYMENT.md))*
+
+### 3. Synchronize Database
+Recreate database schemas, pgvector definitions, and generate the client typings:
+```bash
+npx prisma db push
+```
+
+### 4. Run the Dev Server
+Start the Next.js development server:
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) to view the portal dashboard.
+
+### 5. Execute System Integration Tests
+FlowDesk AI features a comprehensive testing script verifying SLA calculators, breach engines, n8n webhooks, document chunking, Gemini embeddings, pgvector searches, and grounded RAG chatbot replies:
+```bash
+npx tsx scripts/test-sla-rag-flow.ts
 ```
