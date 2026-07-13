@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { ArrowRight, Shield, Clock, BarChart3, Zap, Smartphone, Sparkles } from "lucide-react";
+import { ArrowRight, Shield, Zap, Smartphone, Sparkles } from "lucide-react";
 
 export default async function LandingPage() {
   const session = await auth();

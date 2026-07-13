@@ -1,24 +1,50 @@
 import { NextResponse } from "next/server";
 import { handleIncomingWhatsAppMessage } from "@/services/whatsapp.service";
+import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import crypto from "crypto";
 
-// Bounded in-memory cache for message deduplication
-const processedMessageIds = new Set<string>();
-const processedMessageIdTimeline: string[] = [];
-const MAX_CACHE_SIZE = 2000;
+// Meta retries undelivered/failed webhooks for up to 7 days (at-least-once delivery),
+// so claimed message IDs must outlive that window before it's safe to prune them.
+const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+// Cheap opportunistic cleanup: run on a small fraction of requests instead of on a
+// dedicated schedule, so this stays self-contained without new cron infrastructure.
+const CLEANUP_SAMPLE_RATE = 0.01;
 
-function isDuplicateMessage(messageId: string): boolean {
-  if (processedMessageIds.has(messageId)) {
+/**
+ * Durably claims a Meta message ID via an atomic DB insert. Backed by a unique
+ * constraint on ProcessedWebhookEvent.messageId, so this is safe under concurrent
+ * retries and survives serverless cold starts (unlike an in-memory cache).
+ * Returns true if this is the first time the ID has been claimed (i.e. process it);
+ * false if it was already claimed (i.e. a duplicate delivery — skip processing).
+ */
+async function claimMessageId(messageId: string): Promise<boolean> {
+  try {
+    await prisma.processedWebhookEvent.create({ data: { messageId } });
     return true;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return false;
+    }
+    // Unexpected DB error: don't silently treat as a duplicate — let the caller
+    // fail the request so Meta retries it later instead of us dropping a message.
+    throw err;
   }
-  processedMessageIds.add(messageId);
-  processedMessageIdTimeline.push(messageId);
-  
-  if (processedMessageIdTimeline.length > MAX_CACHE_SIZE) {
-    const oldest = processedMessageIdTimeline.shift();
-    if (oldest) processedMessageIds.delete(oldest);
+}
+
+/**
+ * Deletes claimed message IDs older than Meta's retry window. Sampled probabilistically
+ * per-request rather than run on a schedule, and always dispatched in the background so
+ * it never adds latency to the webhook response.
+ */
+async function cleanupOldProcessedWebhookEvents(): Promise<void> {
+  const cutoff = new Date(Date.now() - RETENTION_MS);
+  const result = await prisma.processedWebhookEvent.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+  if (result.count > 0) {
+    console.log(`[WhatsApp Webhook] [INFO] Cleaned up ${result.count} expired processed-webhook-event records.`);
   }
-  return false;
 }
 
 function verifySignature(payloadText: string, signatureHeader: string | null): boolean {
@@ -65,6 +91,19 @@ export async function GET(request: Request) {
  * Receives incoming messages from Meta API or the local Web Simulator.
  */
 export async function POST(request: Request) {
+  const nextRequest = request as Request & { waitUntil?: (promise: Promise<unknown>) => void };
+
+  // Opportunistic, sampled, non-blocking cleanup of expired dedup records. Dispatched
+  // up front so it never sits on the response path regardless of which branch below runs.
+  if (Math.random() < CLEANUP_SAMPLE_RATE) {
+    const cleanupPromise = cleanupOldProcessedWebhookEvents().catch((err) =>
+      console.error("[WhatsApp Webhook] [ERROR] Cleanup of expired processed-webhook-events failed:", err)
+    );
+    if (typeof nextRequest.waitUntil === "function") {
+      nextRequest.waitUntil(cleanupPromise);
+    }
+  }
+
   try {
     const signatureHeader = request.headers.get("x-hub-signature-256");
     const rawBody = await request.text();
@@ -119,10 +158,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing signature header" }, { status: 401 });
     }
 
-    // 4. Duplicate message checking for Meta requests
-    if (messageId && isDuplicateMessage(messageId)) {
-      console.log(`[WhatsApp Webhook] [INFO] Duplicate message detected (id: ${messageId}). Acknowledging with 200 OK.`);
-      return NextResponse.json({ success: true, message: "Duplicate message ignored." });
+    // 4. Duplicate message checking for Meta requests (durable, DB-backed claim)
+    if (messageId) {
+      const isNewMessage = await claimMessageId(messageId);
+      if (!isNewMessage) {
+        console.log(`[WhatsApp Webhook] [INFO] Duplicate message detected (id: ${messageId}). Acknowledging with 200 OK.`);
+        return NextResponse.json({ success: true, message: "Duplicate message ignored." });
+      }
     }
 
     // 5. Execution branching:
@@ -134,8 +176,7 @@ export async function POST(request: Request) {
     // Meta requests run asynchronously to respond immediately within Meta's 5s timeout.
     else {
       console.log(`[WhatsApp Webhook] [INFO] Spawning background worker for message processing from ${phoneNumber}`);
-      
-      const nextRequest = request as any;
+
       const processPromise = handleIncomingWhatsAppMessage(phoneNumber, customerName, text)
         .then((reply) => {
           console.log(`[WhatsApp Webhook] [INFO] Background worker successfully completed. Reply sent: "${reply}"`);
@@ -150,8 +191,9 @@ export async function POST(request: Request) {
 
       return NextResponse.json({ success: true, message: "Webhook received and processing in background." });
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("[WhatsApp Webhook] [ERROR] Internal server error handling event:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

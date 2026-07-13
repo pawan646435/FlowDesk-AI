@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment, TicketSource } from "@prisma/client";
 import { analyzeTicket } from "@/services/gemini.service";
-import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook, triggerResolutionWebhook } from "@/services/n8n.service";
+import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook, triggerResolutionWebhook, WebhookPayload } from "@/services/n8n.service";
 
 export async function createTicket(userId: string, data: { title: string; description: string; isHighPriority?: boolean }) {
   // 1. Trigger AI classification prior to database transaction
@@ -188,8 +188,8 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
         const payload = {
           ticketId: updatedTicket.id,
           title: updatedTicket.title,
-          category: (updatedTicket.category || "GENERAL_INQUIRY") as any,
-          priority: (updatedTicket.priority || "LOW") as any,
+          category: (updatedTicket.category || "GENERAL_INQUIRY") as WebhookPayload["category"],
+          priority: (updatedTicket.priority || "LOW") as WebhookPayload["priority"],
         };
         const resolutionResponse = await triggerResolutionWebhook(payload);
         if (resolutionResponse.success) {

@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getQueueTickets } from "@/services/ticket.service";
 import { ArrowLeft, Inbox, ShieldAlert, Sparkles, User, Tag, Clock, Eye } from "lucide-react";
+import type { Prisma } from "@prisma/client";
+
+type QueueTicket = Prisma.TicketGetPayload<{ include: { user: true } }>;
 
 export default async function QueuePage() {
   const session = await auth();
@@ -122,7 +125,7 @@ export default async function QueuePage() {
   );
 }
 
-function TicketQueueCard({ ticket, isHigh = false }: { ticket: any; isHigh?: boolean }) {
+function TicketQueueCard({ ticket, isHigh = false }: { ticket: QueueTicket; isHigh?: boolean }) {
   return (
     <div className={`group rounded-2xl border p-5 sm:p-6 transition-all hover:bg-muted/15 flex flex-col md:flex-row md:items-center justify-between gap-6 glass ${
       isHigh 

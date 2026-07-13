@@ -145,11 +145,7 @@ async function runTests() {
 
     const chunkEmbedding = await generateEmbedding(chunkTexts[i]);
     const vectorString = `[${chunkEmbedding.join(",")}]`;
-    await prisma.$executeRawUnsafe(
-      `UPDATE "DocumentChunk" SET embedding = $1::vector WHERE id = $2`,
-      vectorString,
-      chunk.id
-    );
+    await prisma.$executeRaw`UPDATE "DocumentChunk" SET embedding = ${vectorString}::vector WHERE id = ${chunk.id}`;
     dbChunks.push(chunk);
   }
 

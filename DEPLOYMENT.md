@@ -80,6 +80,7 @@ Deploy the Next.js serverless app on Vercel:
    - `N8N_WEBHOOK_NEGATIVE_SENTIMENT`
    - `N8N_WEBHOOK_RESOLUTION`
    - `N8N_WEBHOOK_SLA_BREACH`
+   - `CRON_SECRET` (Generate with `openssl rand -hex 32`; must match the `CRON_SECRET` GitHub Actions repo secret in Section 6)
 5. Click **Deploy**.
 
 ---
@@ -108,7 +109,20 @@ n8n acts as the secondary automation service orchestrating alert notifications.
 
 ---
 
-## 6. Troubleshooting
+## 6. Scheduled SLA Breach Checking (GitHub Actions)
+
+`GET /api/tickets/sla-check` evaluates all active tickets for SLA breaches and must run on a schedule. Vercel's Hobby plan only permits once-a-day Cron Jobs, which is far too infrequent for a CRITICAL-tier SLA response target of 15 minutes — so this is driven externally by a GitHub Actions scheduled workflow (`.github/workflows/sla-check.yml`) instead of Vercel Cron.
+
+1. Generate a secret: `openssl rand -hex 32`.
+2. Set it as the `CRON_SECRET` environment variable in Vercel (Section 4 above).
+3. In the GitHub repository, go to **Settings > Secrets and variables > Actions** and add two **repository secrets**:
+   - `CRON_SECRET` — the **same value** you set in Vercel.
+   - `PRODUCTION_URL` — your deployed app's base URL (e.g. `https://your-domain.vercel.app`), no trailing slash.
+4. The workflow runs every 5 minutes, sends `GET {PRODUCTION_URL}/api/tickets/sla-check` with an `Authorization: Bearer <CRON_SECRET>` header, and fails the job if the response isn't a 2xx — so a broken deployment or an expired secret shows up as a failed GitHub Actions run.
+
+---
+
+## 7. Troubleshooting
 
 - **401 Unauthorized (WhatsApp outbound)**: Ensure the `WHATSAPP_ACCESS_TOKEN` has not expired (temporary tokens expire in 24 hours). Ensure the System User has been granted the `whatsapp_business_messaging` permissions in Meta Business settings.
 - **PrismaClientInitializationError**: Neon database goes to sleep after 5 minutes of inactivity on free tier accounts. The serverless functions are configured with catch-retry mechanisms, but accessing the UI after hours might cause a brief 2-second sleep spin-up.

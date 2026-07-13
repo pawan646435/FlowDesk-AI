@@ -187,14 +187,15 @@ model WhatsAppMessage {
 }
 
 model KnowledgeDocument {
-  id        String          @id @default(cuid())
-  title     String
-  fileName  String
-  fileType  String
-  status    String          @default("PENDING") // PENDING, PROCESSING, INDEXED, FAILED
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  chunks    DocumentChunk[]
+  id            String          @id @default(cuid())
+  title         String
+  fileName      String
+  fileType      String
+  status        String          @default("PENDING") // PENDING, PROCESSING, INDEXED, FAILED
+  failureReason String?         // populated when status = FAILED, e.g. a caught error message or a stuck-job timeout note
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  chunks        DocumentChunk[]
 }
 
 model DocumentChunk {
@@ -207,5 +208,18 @@ model DocumentChunk {
   document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
+}
+
+// Durable dedup record for inbound WhatsApp webhook deliveries. Meta retries
+// undelivered/failed webhooks for up to 7 days with at-least-once semantics, so
+// an in-memory cache doesn't survive Vercel serverless cold starts across that
+// window. A row is inserted (claimed) before processing begins; the unique
+// constraint on messageId makes the claim atomic even under concurrent retries.
+model ProcessedWebhookEvent {
+  id        String   @id @default(cuid())
+  messageId String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 

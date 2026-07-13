@@ -1,0 +1,29 @@
+name: RAG Ingestion Stuck Document Recovery
+
+on:
+  schedule:
+    # Every 5 minutes, matching sla-check.yml's cadence. This is a rare failure mode
+    # (a serverless invocation getting frozen/recycled mid-ingestion), so it doesn't
+    # need to run faster than the SLA check — reusing the same interval keeps the
+    # operational mental model simple (everything self-heals on a 5-minute heartbeat).
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: rag-recovery-check
+  # Separate concurrency group from sla-check.yml: these are unrelated subsystems and
+  # shouldn't block each other's runs.
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call stuck document recovery endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${PRODUCTION_URL}/api/knowledge-base/recover-stuck"

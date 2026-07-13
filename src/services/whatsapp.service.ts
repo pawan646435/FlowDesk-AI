@@ -32,11 +32,12 @@ async function fetchWithRetry(
         return response;
       }
       console.warn(`[WhatsApp Service] [Retry Helper] Meta API call failed with status ${response.status}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
-    } catch (err: any) {
+    } catch (err) {
       if (attempt >= maxRetries) {
         throw err;
       }
-      console.warn(`[WhatsApp Service] [Retry Helper] Meta API call failed with error: ${err.message}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.warn(`[WhatsApp Service] [Retry Helper] Meta API call failed with error: ${message}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
     }
     attempt++;
     await new Promise((resolve) => setTimeout(resolve, delay));

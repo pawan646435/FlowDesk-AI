@@ -80,8 +80,8 @@ export async function resetConversation(phoneNumber: string) {
       return { success: true };
     }
     return { success: false, error: "Conversation not found" };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
 
@@ -112,8 +112,8 @@ export async function resolveConversationAction(phoneNumber: string) {
       return { success: true };
     }
     return { success: false, error: "Conversation not found" };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
 
@@ -136,8 +136,8 @@ export async function sendManualAgentReply(phoneNumber: string, text: string) {
     
     revalidatePath("/tickets/whatsapp-history");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
 

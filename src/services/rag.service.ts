@@ -21,13 +21,14 @@ export async function generateEmbedding(text: string, maxRetries = 3, delay = 50
         return result.embedding.values;
       }
       throw new Error("Embed content response was empty");
-    } catch (err: any) {
+    } catch (err) {
       attempt++;
+      const message = err instanceof Error ? err.message : "Unknown error";
       if (attempt >= maxRetries) {
         console.error(`[Embedding Service] Failed to generate embedding after ${maxRetries} attempts:`, err);
         throw err;
       }
-      console.warn(`[Embedding Service] Attempt ${attempt}/${maxRetries} failed: ${err.message}. Retrying in ${delay}ms...`);
+      console.warn(`[Embedding Service] Attempt ${attempt}/${maxRetries} failed: ${message}. Retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       delay *= 2; // Exponential backoff
     }
@@ -56,23 +57,18 @@ export async function searchSimilarity(
     const vectorString = `[${queryEmbedding.join(",")}]`;
 
     // Query Neon PostgreSQL pgvector similarity search
-    const results = await prisma.$queryRawUnsafe<SimilaritySearchResult[]>(
-      `
-      SELECT 
-        id, 
-        "documentId", 
-        "chunkIndex", 
-        content, 
-        1 - (embedding <=> $1::vector) AS similarity
+    const results = await prisma.$queryRaw<SimilaritySearchResult[]>`
+      SELECT
+        id,
+        "documentId",
+        "chunkIndex",
+        content,
+        1 - (embedding <=> ${vectorString}::vector) AS similarity
       FROM "DocumentChunk"
-      WHERE embedding IS NOT NULL AND 1 - (embedding <=> $1::vector) >= $2
-      ORDER BY embedding <=> $1::vector ASC
-      LIMIT $3
-      `,
-      vectorString,
-      threshold,
-      limit
-    );
+      WHERE embedding IS NOT NULL AND 1 - (embedding <=> ${vectorString}::vector) >= ${threshold}
+      ORDER BY embedding <=> ${vectorString}::vector ASC
+      LIMIT ${limit}
+    `;
 
     return results || [];
   } catch (error) {

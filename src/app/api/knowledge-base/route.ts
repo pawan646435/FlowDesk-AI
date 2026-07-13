@@ -7,7 +7,7 @@ import fs from "fs";
 import path from "path";
 
 // GET handler to list documents and aggregate analytics
-export async function GET(req: NextRequest) {
+export async function GET() {
   const session = await auth();
   if (!session || !session.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,8 +29,9 @@ export async function GET(req: NextRequest) {
         ...ragStats,
       },
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -89,8 +90,9 @@ export async function POST(req: NextRequest) {
     const indexPromise = processAndIndexDocument(document.id, tempFilePath);
 
     // If waitUntil is available in request context, defer task, otherwise execute asynchronously
-    if ((req as any).waitUntil) {
-      (req as any).waitUntil(indexPromise);
+    const reqWithWaitUntil = req as NextRequest & { waitUntil?: (promise: Promise<unknown>) => void };
+    if (reqWithWaitUntil.waitUntil) {
+      reqWithWaitUntil.waitUntil(indexPromise);
     } else {
       // In development server
       indexPromise.catch((err) => console.error("[Background Indexing] Failed:", err));
@@ -101,8 +103,9 @@ export async function POST(req: NextRequest) {
       message: "File uploaded successfully. Document processing started in the background.",
       document,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("[Knowledge API] Upload error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

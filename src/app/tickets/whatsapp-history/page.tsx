@@ -1,18 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { 
-  MessageSquare, 
-  Send, 
-  RefreshCw, 
-  Search, 
-  Phone, 
-  ExternalLink, 
-  ShieldAlert, 
-  CheckCircle2, 
-  Clock,
-  User,
+import {
+  MessageSquare,
+  Send,
+  RefreshCw,
+  Search,
+  ExternalLink,
+  ShieldAlert,
+  CheckCircle2,
   Trash2,
   Inbox
 } from "lucide-react";
@@ -62,7 +59,7 @@ export default function WhatsAppHistoryPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load conversation list
-  const loadConversations = async (autoSelectFirst = false) => {
+  const loadConversations = useCallback(async (autoSelectFirst = false) => {
     setLoadingList(true);
     setError(null);
     try {
@@ -71,7 +68,7 @@ export default function WhatsAppHistoryPage() {
         id: c.id,
         phoneNumber: c.phoneNumber,
         customerName: c.customerName,
-        status: c.status as any,
+        status: c.status as Conversation["status"],
         createdAt: new Date(c.createdAt),
         updatedAt: new Date(c.updatedAt),
         ticketId: c.ticketId,
@@ -83,15 +80,17 @@ export default function WhatsAppHistoryPage() {
       }));
       setConversations(formatted);
 
-      if (autoSelectFirst && formatted.length > 0 && !selectedPhone) {
-        setSelectedPhone(formatted[0].phoneNumber);
+      if (autoSelectFirst && formatted.length > 0) {
+        // Functional update reads the latest selectedPhone without needing it in the dependency array,
+        // so this callback's identity stays stable across renders.
+        setSelectedPhone(prev => prev ?? formatted[0].phoneNumber);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load conversations.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load conversations.");
     } finally {
       setLoadingList(false);
     }
-  };
+  }, []);
 
   // Load message logs for active conversation
   const loadMessages = async (phone: string) => {
@@ -100,12 +99,12 @@ export default function WhatsAppHistoryPage() {
       const msgList = await getConversationMessages(phone);
       setMessages(msgList.map(m => ({
         id: m.id,
-        sender: m.sender as any,
+        sender: m.sender as Message["sender"],
         text: m.text,
         createdAt: new Date(m.createdAt)
       })));
-    } catch (err: any) {
-      setError(err.message || "Failed to load messages.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load messages.");
     } finally {
       setLoadingMessages(false);
     }
@@ -113,7 +112,7 @@ export default function WhatsAppHistoryPage() {
 
   useEffect(() => {
     loadConversations(true);
-  }, []);
+  }, [loadConversations]);
 
   useEffect(() => {
     if (selectedPhone) {
@@ -147,8 +146,8 @@ export default function WhatsAppHistoryPage() {
       // Reload messages & update conversation snippet
       await loadMessages(selectedPhone);
       await loadConversations();
-    } catch (err: any) {
-      setError(err.message || "Failed to send message.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message.");
     } finally {
       setSendingReply(false);
     }
@@ -164,8 +163,8 @@ export default function WhatsAppHistoryPage() {
         throw new Error(res.error);
       }
       await loadConversations();
-    } catch (err: any) {
-      setError(err.message || "Failed to resolve conversation.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve conversation.");
     } finally {
       setActionLoading(false);
     }
@@ -183,8 +182,8 @@ export default function WhatsAppHistoryPage() {
         }
         await loadMessages(selectedPhone);
         await loadConversations();
-      } catch (err: any) {
-        setError(err.message || "Failed to reset session.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reset session.");
       } finally {
         setActionLoading(false);
       }

@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { 
-  MessageSquare, 
-  Send, 
-  RefreshCw, 
-  User, 
-  Phone, 
-  ExternalLink, 
-  ShieldAlert, 
-  CheckCircle2, 
-  Circle,
+import {
+  MessageSquare,
+  Send,
+  RefreshCw,
+  User,
+  Phone,
+  ExternalLink,
+  ShieldAlert,
   HelpCircle
 } from "lucide-react";
 import { 
@@ -47,7 +45,7 @@ export default function WhatsAppSimulator() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load conversation on mount / phone number change
-  const loadConversation = async () => {
+  const loadConversation = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -63,7 +61,7 @@ export default function WhatsAppSimulator() {
         const msgList = await getConversationMessages(phoneNumber);
         setMessages(msgList.map(m => ({
           id: m.id,
-          sender: m.sender as any,
+          sender: m.sender as Message["sender"],
           text: m.text,
           createdAt: new Date(m.createdAt)
         })));
@@ -71,16 +69,16 @@ export default function WhatsAppSimulator() {
         setConversation(null);
         setMessages([]);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load conversation history.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load conversation history.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [phoneNumber]);
 
   useEffect(() => {
     loadConversation();
-  }, [phoneNumber]);
+  }, [loadConversation]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -137,8 +135,8 @@ export default function WhatsAppSimulator() {
       
       // Reload actual database states
       await loadConversation();
-    } catch (err: any) {
-      setError(err.message || "Failed to deliver message.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to deliver message.");
       // Rollback optimistic message if error
       setMessages(prev => prev.filter(m => m.id !== tempCustomerMsg.id));
     } finally {
@@ -152,8 +150,8 @@ export default function WhatsAppSimulator() {
       try {
         await resetConversation(phoneNumber);
         await loadConversation();
-      } catch (err: any) {
-        setError(err.message || "Failed to reset session.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to reset session.");
       } finally {
         setLoading(false);
       }
@@ -304,21 +302,21 @@ export default function WhatsAppSimulator() {
                 onClick={() => selectSuggestion("Hi, is FlowDesk AI v2 active?")}
                 className="text-left text-xs bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-white px-3.5 py-2.5 rounded-lg border border-zinc-800 hover:border-zinc-700 transition-all"
               >
-                💡 <span className="font-semibold text-zinc-100">Self-Service:</span> "Hi, is FlowDesk AI v2 active?"
+                💡 <span className="font-semibold text-zinc-100">Self-Service:</span> &quot;Hi, is FlowDesk AI v2 active?&quot;
               </button>
               
               <button
                 onClick={() => selectSuggestion("My server crashed and the site is returning a 500 error. Please help immediately!")}
                 className="text-left text-xs bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-white px-3.5 py-2.5 rounded-lg border border-zinc-800 hover:border-zinc-700 transition-all"
               >
-                🔥 <span className="font-semibold text-zinc-100">Escalate Billing/Tech:</span> "My server crashed..."
+                🔥 <span className="font-semibold text-zinc-100">Escalate Billing/Tech:</span> &quot;My server crashed...&quot;
               </button>
               
               <button
                 onClick={() => selectSuggestion("I need an agent. This is urgent!")}
                 className="text-left text-xs bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-white px-3.5 py-2.5 rounded-lg border border-zinc-800 hover:border-zinc-700 transition-all"
               >
-                🚨 <span className="font-semibold text-zinc-100">Force Escalation:</span> "I need an agent. This is urgent!"
+                🚨 <span className="font-semibold text-zinc-100">Force Escalation:</span> &quot;I need an agent. This is urgent!&quot;
               </button>
             </div>
           </div>

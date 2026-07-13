@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getTicketStats, getTickets } from "@/services/ticket.service";
 import { getRecentActivities } from "@/services/activity.service";
-import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert, MessageSquare, Smartphone } from "lucide-react";
+import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert, Smartphone } from "lucide-react";
 
 export default async function DashboardPage() {
   const session = await auth();

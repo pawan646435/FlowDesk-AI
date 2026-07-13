@@ -1,19 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  FileText, 
-  UploadCloud, 
-  Trash2, 
-  Search, 
-  BookOpen, 
-  CheckCircle, 
-  AlertCircle, 
-  RefreshCw, 
-  ArrowRight,
+import {
+  FileText,
+  UploadCloud,
+  Trash2,
+  Search,
+  AlertCircle,
+  RefreshCw,
   Database,
   SearchCode
 } from "lucide-react";
+import type { SimilaritySearchResult } from "@/services/rag.service";
 
 interface DocItem {
   id: string;
@@ -49,7 +47,7 @@ export default function KnowledgeBasePage() {
   // Search states
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SimilaritySearchResult[]>([]);
 
   // Fetch documents and stats
   const fetchData = async () => {
@@ -123,15 +121,15 @@ export default function KnowledgeBasePage() {
           setStats(freshData.stats);
           
           // Stop polling if processing finished or timed out (after 10 attempts)
-          const doc = freshData.documents.find((d: any) => d.id === data.document.id);
+          const doc = freshData.documents.find((d: DocItem) => d.id === data.document.id);
           if (!doc || doc.status === "INDEXED" || doc.status === "FAILED" || attempts > 10) {
             clearInterval(interval);
           }
         }
       }, 2000);
 
-    } catch (err: any) {
-      setUploadError(err.message || "Something went wrong.");
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setUploading(false);
     }
@@ -344,7 +342,7 @@ export default function KnowledgeBasePage() {
                         </span>
                       </div>
                       <p className="text-sm text-foreground leading-relaxed italic">
-                        "{res.content}"
+                        &quot;{res.content}&quot;
                       </p>
                     </div>
                   ))}

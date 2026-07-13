@@ -5,9 +5,16 @@ import { testEscalationAction } from "../actions";
 import Link from "next/link";
 import { ArrowLeft, Play, Server, Send, AlertTriangle, CheckCircle, Terminal } from "lucide-react";
 
+interface EscalationTestResult {
+  success?: boolean;
+  status?: number;
+  data?: unknown;
+  error?: string;
+}
+
 export default function TestEscalationPage() {
   const [isPending, startTransition] = useTransition();
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<EscalationTestResult | null>(null);
 
   const handleTrigger = () => {
     setResult(null);

@@ -22,11 +22,12 @@ async function fetchWithRetry(
         return response;
       }
       console.warn(`[Retry Helper] Fetch failed with status ${response.status}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
-    } catch (err: any) {
+    } catch (err) {
       if (attempt >= maxRetries) {
         throw err;
       }
-      console.warn(`[Retry Helper] Fetch failed with error: ${err.message}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.warn(`[Retry Helper] Fetch failed with error: ${message}. Attempt ${attempt + 1}/${maxRetries + 1}. Retrying in ${delay}ms...`);
     }
     attempt++;
     await new Promise((resolve) => setTimeout(resolve, delay));
@@ -34,11 +35,11 @@ async function fetchWithRetry(
   }
 }
 
-async function triggerWebhook(
+async function triggerWebhook<T extends object>(
   webhookName: string,
   url: string | undefined,
-  payload: WebhookPayload
-): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
+  payload: T
+): Promise<{ success: boolean; status?: number; data?: unknown; error?: string }> {
   console.log(`[n8n Service] [INFO] Initiating ${webhookName} Webhook...`);
   console.log(`[n8n Service] [INFO] URL: ${url}`);
   console.log(`[n8n Service] [INFO] Payload:`, JSON.stringify(payload, null, 2));
@@ -67,7 +68,7 @@ async function triggerWebhook(
       return { success: false, status: response.status, error: `HTTP ${response.status}: ${rawText || "Empty response"}` };
     }
 
-    let responseData: any = null;
+    let responseData: unknown = null;
     if (rawText && rawText.trim().length > 0) {
       try {
         responseData = JSON.parse(rawText);
@@ -79,9 +80,10 @@ async function triggerWebhook(
 
     console.log(`[n8n Service] [INFO] Parsed response data:`, JSON.stringify(responseData, null, 2));
     return { success: true, status: response.status, data: responseData };
-  } catch (error: any) {
+  } catch (error) {
     console.error(`[n8n Service] [ERROR] Exception during ${webhookName} webhook execution:`, error);
-    return { success: false, error: error.message || "Unknown error" };
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, error: message };
   }
 }
 
@@ -110,5 +112,5 @@ export interface SlaBreachWebhookPayload {
 }
 
 export async function triggerSlaBreachWebhook(payload: SlaBreachWebhookPayload) {
-  return triggerWebhook("SLA Breach", process.env.N8N_WEBHOOK_SLA_BREACH || process.env.N8N_WEBHOOK_ESCALATION, payload as any);
+  return triggerWebhook("SLA Breach", process.env.N8N_WEBHOOK_SLA_BREACH || process.env.N8N_WEBHOOK_ESCALATION, payload);
 }

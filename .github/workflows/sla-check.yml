@@ -1,0 +1,27 @@
+name: SLA Breach Check
+
+on:
+  schedule:
+    # Every 5 minutes. CRITICAL/HIGH tickets have a 15-minute response SLA, so this
+    # runs on GitHub Actions instead of Vercel Cron (Hobby plan only allows once/day).
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: sla-check
+  # Never run two checks in parallel; if a run is still in flight when the next
+  # trigger fires, queue behind it instead of overlapping.
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call SLA breach check endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${PRODUCTION_URL}/api/tickets/sla-check"

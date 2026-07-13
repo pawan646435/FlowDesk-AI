@@ -83,6 +83,10 @@ The RAG pipeline grounds Gemini support responses using organizational files, av
    ```
 6. **Prompt Augmentation**: Best matches above the similarity threshold ($>60\%$) are injected into the Gemini context.
 
+**Stuck-job recovery**: Ingestion (`processAndIndexDocument`) runs as a detached background promise (`waitUntil` if available, otherwise fire-and-forget) — there is no durable job queue behind it, so an unawaited background task has no completion guarantee. If the serverless function is frozen or recycled mid-task (e.g. a large document's sequential, un-batched per-chunk embedding calls running past the platform's execution budget), the `KnowledgeDocument` row is left in `PROCESSING` forever with no automatic retry.
+
+A recovery sweep (`recoverStuckDocuments`, exposed via `GET /api/knowledge-base/recover-stuck`, `CRON_SECRET`-protected the same way as the SLA check) finds documents stuck in `PROCESSING` for more than **10 minutes** and marks them `FAILED` with a `failureReason`. It does **not** retry or resume processing: the uploaded file only ever existed as an ephemeral local path (`./tmp/...`) on the specific serverless instance that received the upload, with no durable copy anywhere — once that instance is gone, there is nothing to resume from. Recovery is a clear failure signal plus any partial `DocumentChunk` rows cleaned up (so stale, half-indexed content doesn't keep surfacing in RAG search results for a document the UI shows as failed); re-indexing happens by the user re-uploading the file, which the Knowledge Base UI already supports. Like the SLA breach sweep, the claim is atomic (`UPDATE ... WHERE status = 'PROCESSING'`) so a genuinely-still-running job that finishes between the sweep's read and write isn't clobbered. Driven by the same GitHub Actions scheduling pattern as SLA checks (`.github/workflows/rag-recovery-check.yml`, every 5 minutes) rather than Vercel Cron, for the same Hobby-plan cadence reason.
+
 ---
 
 ### B. Enterprise SLA Engine
@@ -105,10 +109,11 @@ stateDiagram-v2
   - **HIGH/CRITICAL**: 15m Response Target / 1h Resolution Target.
   - **MEDIUM**: 1h Response Target / 4h Resolution Target.
   - **LOW**: 4h Response Target / 24h Resolution Target.
-- **Background Monitor**: A background cron service evaluates tickets against target times. If a breach is detected:
-  - Updates `slaBreached = true` in the database.
+- **Background Monitor**: `GET /api/tickets/sla-check` evaluates tickets against target times. If a breach is detected:
+  - Atomically claims the ticket (`UPDATE ... WHERE slaBreached = false`) so overlapping invocations can't double-process the same breach.
   - Logs a timeline breach activity.
   - Fires the `triggerSlaBreachWebhook` non-blocking call to notify on-call teams.
+  - **Scheduling**: driven by a **GitHub Actions** scheduled workflow (`.github/workflows/sla-check.yml`, every 5 minutes) rather than Vercel Cron — Vercel's Hobby plan only supports once-a-day Cron Jobs, far too infrequent for a 15-minute CRITICAL response SLA. The endpoint is authenticated via a shared `CRON_SECRET` (`Authorization: Bearer` header); see [DEPLOYMENT.md](DEPLOYMENT.md#6-scheduled-sla-breach-checking-github-actions).
 
 ---
 
@@ -116,7 +121,7 @@ stateDiagram-v2
 Meta mandates a **5-second response timeout** on webhooks. The webhook route incorporates:
 1. **Immediate Acknowledgment**: Responds with `200 OK` under 200ms, shifting heavy processing to Next.js background workers (`NextRequest.waitUntil`).
 2. **HMAC-SHA256 Verification**: Verifies the `X-Hub-Signature-256` header against the local `WHATSAPP_APP_SECRET` to prevent request forgery.
-3. **Idempotency sliding-window**: Filters out duplicate carrier retries using a fast, memory-bounded cache.
+3. **Durable, DB-backed idempotency**: Duplicate deliveries are suppressed via a `ProcessedWebhookEvent` table with a unique constraint on Meta's message ID — each inbound message is claimed with an atomic `INSERT`, and a unique-constraint violation means it's already been seen. This replaced an in-memory `Set`, which reset on every Vercel serverless cold start and couldn't reliably catch retries; Meta redelivers unacknowledged/failed webhooks for **up to 7 days** with at-least-once semantics, well beyond any single serverless instance's lifetime. Claimed IDs are pruned after that 7-day retention window via a lightweight, sampled (~1% of requests) background cleanup — no dedicated cron needed.
 
 ---
 

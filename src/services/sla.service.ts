@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { TicketPriority, TicketStatus, TicketCategory } from "@prisma/client";
+import { TicketPriority, TicketStatus } from "@prisma/client";
 import { triggerSlaBreachWebhook } from "./n8n.service";
 
 /**
@@ -54,7 +54,9 @@ export async function checkSLABreaches() {
     },
   });
 
-  console.log(`[SLA Monitor] Found ${breachedTickets.length} newly breached tickets.`);
+  console.log(`[SLA Monitor] Found ${breachedTickets.length} candidate breached tickets.`);
+
+  let claimedCount = 0;
 
   for (const ticket of breachedTickets) {
     // Determine which limit was breached (first response or resolution)
@@ -65,14 +67,24 @@ export async function checkSLABreaches() {
     const breachDurationMs = now.getTime() - dueTime.getTime();
     const breachDurationMin = Math.max(0, Math.round(breachDurationMs / 60000));
 
-    // Update ticket state in DB
-    await prisma.ticket.update({
-      where: { id: ticket.id },
+    // Atomically claim this breach: the WHERE clause re-checks slaBreached at write time,
+    // so if a concurrent/overlapping invocation already claimed this ticket between our
+    // findMany() above and this update, `count` comes back 0 and we skip it — preventing
+    // duplicate Activity rows and duplicate n8n webhook fires for the same breach.
+    const claim = await prisma.ticket.updateMany({
+      where: { id: ticket.id, slaBreached: false },
       data: {
         slaBreached: true,
         breachedAt: now,
       },
     });
+
+    if (claim.count === 0) {
+      console.log(`[SLA Monitor] Ticket ${ticket.id} already claimed by a concurrent run, skipping.`);
+      continue;
+    }
+
+    claimedCount++;
 
     // Create system log activity
     await prisma.activity.create({
@@ -98,7 +110,7 @@ export async function checkSLABreaches() {
     }
   }
 
-  return breachedTickets.length;
+  return claimedCount;
 }
 
 /**

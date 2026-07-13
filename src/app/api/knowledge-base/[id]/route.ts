@@ -31,8 +31,9 @@ export async function DELETE(
       success: true,
       message: `Document "${document.title}" and all associated index chunks successfully deleted.`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("[Knowledge DELETE API] Error deleting document:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
