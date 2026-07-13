@@ -27,6 +27,9 @@
 # VS Code Local History extension scratch folder
 .history/
 
+# internal working notes, not user-facing documentation
+PROJECT_REPORT.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*
