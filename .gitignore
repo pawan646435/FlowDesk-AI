@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# VS Code Local History extension scratch folder
+.history/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
