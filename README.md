@@ -1,5 +1,9 @@
 # FlowDesk AI (Omnichannel RAG Support & SLA Management Platform)
 
+## 🚀 Live Demo
+
+🌐 **Production Application:** https://flow-desk-ai-rose.vercel.app/
+
 FlowDesk AI is a modern, enterprise-ready AI support desk and automation platform. It features stateful multi-turn customer messaging, real-time ticket triage (category, priority, sentiment analysis) using **Google Gemini**, automated service-level agreement tracking via a custom **SLA Engine**, and context-grounded AI agent replies powered by a **pgvector Retrieval-Augmented Generation (RAG)** pipeline.
 
 ---
