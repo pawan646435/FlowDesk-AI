@@ -8,17 +8,23 @@ datasource db {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  name          String?
-  email         String?    @unique
-  emailVerified DateTime?
-  image         String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  accounts      Account[]
-  activities    Activity[]
-  sessions      Session[]
-  tickets       Ticket[]
+  id             String            @id @default(cuid())
+  name           String?
+  email          String?           @unique
+  emailVerified  DateTime?
+  image          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organizationId String? // stays nullable permanently — see MULTI_TENANCY_DESIGN.md §9.6
+  role           OrganizationRole? // null until an Invite is consumed; set alongside organizationId
+  organization   Organization?     @relation(fields: [organizationId], references: [id])
+  accounts       Account[]
+  activities     Activity[]
+  sessions       Session[]
+  tickets        Ticket[]
+  invitesSent    Invite[]
+
+  @@index([organizationId])
 }
 
 model Account {
@@ -63,22 +69,22 @@ model VerificationToken {
 }
 
 model Ticket {
-  id              String           @id @default(cuid())
-  title           String
-  description     String
-  status          TicketStatus     @default(OPEN)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  userId          String
-  category        TicketCategory?
-  priority        TicketPriority?
-  userPriority    TicketPriority?
-  aiPriority      TicketPriority?
-  sentiment       TicketSentiment?
-  suggestedReply  String?
-  aiSummary       String?
-  keyIssues       String?          // comma-separated or text issues list
-  recommendedTeam String?
+  id                   String                @id @default(cuid())
+  title                String
+  description          String
+  status               TicketStatus          @default(OPEN)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  userId               String
+  category             TicketCategory?
+  priority             TicketPriority?
+  userPriority         TicketPriority?
+  aiPriority           TicketPriority?
+  sentiment            TicketSentiment?
+  suggestedReply       String?
+  aiSummary            String?
+  keyIssues            String? // comma-separated or text issues list
+  recommendedTeam      String?
   slaBreached          Boolean               @default(false)
   firstResponseDueAt   DateTime?
   resolutionDueAt      DateTime?
@@ -86,6 +92,8 @@ model Ticket {
   breachedAt           DateTime?
   escalatedAt          DateTime?
   source               TicketSource          @default(WEB)
+  organizationId       String? // nullable for now — backfilled in scripts/backfill-demo-org.ts, required later per §6 step 5
+  organization         Organization?         @relation(fields: [organizationId], references: [id])
   whatsAppConversation WhatsAppConversation?
   activities           Activity[]
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -97,19 +105,23 @@ model Ticket {
   @@index([source])
   @@index([firstResponseDueAt])
   @@index([resolutionDueAt])
+  @@index([organizationId])
 }
 
 model Activity {
-  id        String   @id @default(cuid())
-  action    String
-  createdAt DateTime @default(now())
-  ticketId  String
-  userId    String
-  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  action         String
+  createdAt      DateTime      @default(now())
+  ticketId       String
+  userId         String
+  organizationId String? // denormalized — see MULTI_TENANCY_DESIGN.md §1
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  ticket         Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([ticketId])
+  @@index([organizationId])
 }
 
 enum TicketStatus {
@@ -161,16 +173,19 @@ enum MessageSender {
 }
 
 model WhatsAppConversation {
-  id           String                     @id @default(cuid())
-  phoneNumber  String                     @unique
-  customerName String?
-  status       WhatsAppConversationStatus @default(ACTIVE)
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
-  ticketId     String?                    @unique
-  ticket       Ticket?                    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  messages     WhatsAppMessage[]
+  id             String                     @id @default(cuid())
+  phoneNumber    String
+  customerName   String?
+  status         WhatsAppConversationStatus @default(ACTIVE)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  ticketId       String?                    @unique
+  organizationId String? // nullable for now — see MULTI_TENANCY_DESIGN.md §1/§6
+  organization   Organization?              @relation(fields: [organizationId], references: [id])
+  ticket         Ticket?                    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messages       WhatsAppMessage[]
 
+  @@unique([organizationId, phoneNumber])
   @@index([status])
 }
 
@@ -181,33 +196,43 @@ model WhatsAppMessage {
   sender         MessageSender
   text           String
   createdAt      DateTime             @default(now())
+  organizationId String? // denormalized — see MULTI_TENANCY_DESIGN.md §1
+  organization   Organization?        @relation(fields: [organizationId], references: [id])
 
   @@index([conversationId])
   @@index([createdAt])
+  @@index([organizationId])
 }
 
 model KnowledgeDocument {
-  id            String          @id @default(cuid())
-  title         String
-  fileName      String
-  fileType      String
-  status        String          @default("PENDING") // PENDING, PROCESSING, INDEXED, FAILED
-  failureReason String?         // populated when status = FAILED, e.g. a caught error message or a stuck-job timeout note
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  chunks        DocumentChunk[]
+  id             String          @id @default(cuid())
+  title          String
+  fileName       String
+  fileType       String
+  status         String          @default("PENDING") // PENDING, PROCESSING, INDEXED, FAILED
+  failureReason  String? // populated when status = FAILED, e.g. a caught error message or a stuck-job timeout note
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organizationId String? // nullable for now — see MULTI_TENANCY_DESIGN.md §1/§6
+  organization   Organization?   @relation(fields: [organizationId], references: [id])
+  chunks         DocumentChunk[]
+
+  @@index([organizationId])
 }
 
 model DocumentChunk {
-  id         String            @id @default(cuid())
-  documentId String
-  chunkIndex Int
-  content    String
-  embedding  Unsupported("vector(3072)")?
-  createdAt  DateTime          @default(now())
-  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id             String                       @id @default(cuid())
+  documentId     String
+  chunkIndex     Int
+  content        String
+  embedding      Unsupported("vector(3072)")?
+  createdAt      DateTime                     @default(now())
+  organizationId String? // denormalized — load-bearing for §4's RAG scoping
+  organization   Organization?                @relation(fields: [organizationId], references: [id])
+  document       KnowledgeDocument            @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
+  @@index([organizationId])
 }
 
 // Durable dedup record for inbound WhatsApp webhook deliveries. Meta retries
@@ -223,3 +248,80 @@ model ProcessedWebhookEvent {
   @@index([createdAt])
 }
 
+// MULTI_TENANCY_DESIGN.md §1
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // URL-safe identifier; also the natural key for subdomain routing later
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                  User[]
+  tickets                Ticket[]
+  activities             Activity[]
+  whatsAppConversations  WhatsAppConversation[]
+  whatsAppMessages       WhatsAppMessage[]
+  knowledgeDocuments     KnowledgeDocument[]
+  documentChunks         DocumentChunk[]
+  invites                Invite[]
+  whatsAppNumberMappings WhatsAppNumberMapping[]
+  webhookConfig          OrganizationWebhookConfig?
+}
+
+// MULTI_TENANCY_DESIGN.md §7 — per-org n8n webhook routing. All 5 URLs are nullable and
+// independent: an org with no config configured for a given event type skips that
+// webhook cleanly (same behavior as the pre-existing "unconfigured" guard in
+// n8n.service.ts), it does NOT fall back to any global/shared URL. One row per org.
+model OrganizationWebhookConfig {
+  id                       String   @id @default(cuid())
+  organizationId           String   @unique
+  newTicketUrl             String?
+  escalationUrl            String?
+  negativeSentimentUrl     String?
+  resolutionUrl            String?
+  slaBreachUrl             String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum OrganizationRole {
+  OWNER
+  MEMBER
+}
+
+// MULTI_TENANCY_DESIGN.md §9.2, role field added per §9.6
+model Invite {
+  id             String           @id @default(cuid())
+  email          String
+  organizationId String
+  token          String           @unique
+  invitedById    String? // null for self-invites created by the org-creation flow (§9.1) — no User row exists yet at that point
+  role           OrganizationRole @default(MEMBER)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([email])
+  @@index([token])
+}
+
+// MULTI_TENANCY_DESIGN.md §5 Option C — per-org WhatsApp Business phone number routing.
+// New table, no pre-existing data, so organizationId is required from the start (no backfill needed).
+// The doc's own spec for this table was a one-line illustrative shape (phoneNumberId @unique,
+// organizationId); id/createdAt/the Organization relation are standard scaffolding matching every
+// other model in this schema, not additional design decisions.
+model WhatsAppNumberMapping {
+  id             String       @id @default(cuid())
+  phoneNumberId  String       @unique
+  organizationId String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
