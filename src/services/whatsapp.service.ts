@@ -51,8 +51,9 @@ async function fetchWithRetry(
  * otherwise runs in logged mock fallback mode.
  */
 export async function sendWhatsAppMessage(
-  phoneNumber: string, 
-  text: string, 
+  phoneNumber: string,
+  organizationId: string,
+  text: string,
   conversationId?: string,
   sender: MessageSender = MessageSender.AI
 ) {
@@ -61,8 +62,9 @@ export async function sendWhatsAppMessage(
   // 1. If conversationId is not provided, resolve or create active session
   if (!finalConvId) {
     let conversation = await prisma.whatsAppConversation.findFirst({
-      where: { 
+      where: {
         phoneNumber,
+        organizationId,
         status: { in: [WhatsAppConversationStatus.ACTIVE, WhatsAppConversationStatus.ESCALATED] }
       }
     });
@@ -71,6 +73,7 @@ export async function sendWhatsAppMessage(
       conversation = await prisma.whatsAppConversation.create({
         data: {
           phoneNumber,
+          organizationId,
           customerName: "WhatsApp User",
           status: WhatsAppConversationStatus.ACTIVE
         }
@@ -83,6 +86,7 @@ export async function sendWhatsAppMessage(
   await prisma.whatsAppMessage.create({
     data: {
       conversationId: finalConvId,
+      organizationId,
       sender,
       text
     }
@@ -128,15 +132,18 @@ export async function sendWhatsAppMessage(
  * Handles stateful sessioning, Gemini Support Agent replies, ticket escalation, and n8n webhook triggers.
  */
 export async function handleIncomingWhatsAppMessage(
-  phoneNumber: string, 
-  customerName: string | null, 
+  phoneNumber: string,
+  organizationId: string,
+  customerName: string | null,
   text: string
 ): Promise<string> {
   console.log(`[WhatsApp Service] Incoming message from ${phoneNumber} (${customerName || "Unknown"}): "${text}"`);
 
-  // 1. Resolve or create active conversation
-  let conversation = await prisma.whatsAppConversation.findUnique({
-    where: { phoneNumber },
+  // 1. Resolve or create active conversation. phoneNumber is no longer globally unique
+  // (organizationId + phoneNumber is), so this can no longer be findUnique on phoneNumber
+  // alone — the caller has already resolved organizationId before this function runs.
+  let conversation = await prisma.whatsAppConversation.findFirst({
+    where: { organizationId, phoneNumber },
     include: { messages: { orderBy: { createdAt: "asc" } } }
   });
 
@@ -144,6 +151,7 @@ export async function handleIncomingWhatsAppMessage(
     conversation = await prisma.whatsAppConversation.create({
       data: {
         phoneNumber,
+        organizationId,
         customerName: customerName || "WhatsApp User",
         status: WhatsAppConversationStatus.ACTIVE
       },
@@ -167,6 +175,7 @@ export async function handleIncomingWhatsAppMessage(
   const incomingMsgRecord = await prisma.whatsAppMessage.create({
     data: {
       conversationId: conversation.id,
+      organizationId,
       sender: MessageSender.CUSTOMER,
       text
     }
@@ -186,7 +195,7 @@ export async function handleIncomingWhatsAppMessage(
     }
     
     // Send to user and store in DB
-    await sendWhatsAppMessage(phoneNumber, autoReply, conversation.id);
+    await sendWhatsAppMessage(phoneNumber, organizationId, autoReply, conversation.id);
     return autoReply;
   }
 
@@ -197,18 +206,25 @@ export async function handleIncomingWhatsAppMessage(
     createdAt: m.createdAt
   }));
 
-  // Fetch or create system agent user to track activity timeline
-  let systemUser = await prisma.user.findFirst();
+  // Fetch or create system agent user to track activity timeline. MULTI_TENANCY_DESIGN.md
+  // §3 flagged this as a real cross-tenant bug pre-fix: findFirst() with no filter grabbed
+  // *any* user in the entire database, meaning WhatsApp-originated tickets/activities could
+  // be attributed to a random org's user. Scoping to organizationId fixes the cross-tenant
+  // leak; it's still not perfect attribution (any user in the org can be picked, not a
+  // dedicated service account), but a dedicated per-org system user is a separate,
+  // out-of-scope improvement, not required to close the cross-tenant hole itself.
+  let systemUser = await prisma.user.findFirst({ where: { organizationId } });
   if (!systemUser) {
     systemUser = await prisma.user.create({
       data: {
         name: "System Agent",
-        email: "whatsapp-system@flowdesk.ai"
+        email: `whatsapp-system+${organizationId}@flowdesk.ai`,
+        organizationId
       }
     });
   }
 
-  const aiResult = await analyzeWhatsAppMessage(text, historyItems, systemUser.id);
+  const aiResult = await analyzeWhatsAppMessage(text, historyItems, organizationId, systemUser.id);
   console.log(`[WhatsApp Service] Gemini assessment for ${phoneNumber}: needsEscalation=${aiResult.needsEscalation}`);
 
   // 5. Handle Escalation Action
@@ -230,6 +246,7 @@ export async function handleIncomingWhatsAppMessage(
         title: aiResult.ticketData?.title || `WhatsApp Escalation from ${phoneNumber}`,
         description: aiResult.ticketData?.description || text,
         userId: systemUser.id,
+        organizationId,
         status: TicketStatus.OPEN,
         category,
         priority,
@@ -256,6 +273,7 @@ export async function handleIncomingWhatsAppMessage(
     await prisma.activity.create({
       data: {
         userId: systemUser.id,
+        organizationId,
         ticketId: ticket.id,
         action: `Ticket created via WhatsApp message from ${phoneNumber}`
       }
@@ -264,6 +282,7 @@ export async function handleIncomingWhatsAppMessage(
     await prisma.activity.create({
       data: {
         userId: systemUser.id,
+        organizationId,
         ticketId: ticket.id,
         action: `AI WhatsApp Analysis: Escalated. Category=${category}, Priority=${priority}, Sentiment=${sentiment}`
       }
@@ -280,11 +299,12 @@ export async function handleIncomingWhatsAppMessage(
     // F. Trigger n8n Automation Webhooks asynchronously in the background
     (async () => {
       try {
-        const newTicketResponse = await triggerNewTicketWebhook(payload);
+        const newTicketResponse = await triggerNewTicketWebhook(organizationId, payload);
         if (newTicketResponse.success) {
           await prisma.activity.create({
             data: {
               userId: systemUser.id,
+              organizationId,
               ticketId: ticket.id,
               action: "Workflow Triggered: New Ticket Automation",
             },
@@ -296,11 +316,12 @@ export async function handleIncomingWhatsAppMessage(
 
       if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
         try {
-          const escalationResponse = await triggerEscalationWebhook(payload);
+          const escalationResponse = await triggerEscalationWebhook(organizationId, payload);
           if (escalationResponse.success) {
             await prisma.activity.create({
               data: {
                 userId: systemUser.id,
+                organizationId,
                 ticketId: ticket.id,
                 action: "High Priority Escalated: Alert sent to On-Call",
               },
@@ -313,11 +334,12 @@ export async function handleIncomingWhatsAppMessage(
 
       if (ticket.sentiment === TicketSentiment.NEGATIVE) {
         try {
-          const csResponse = await triggerNegativeSentimentWebhook(payload);
+          const csResponse = await triggerNegativeSentimentWebhook(organizationId, payload);
           if (csResponse.success) {
             await prisma.activity.create({
               data: {
                 userId: systemUser.id,
+                organizationId,
                 ticketId: ticket.id,
                 action: "Negative Sentiment Alert: Customer success team notified",
               },
@@ -331,11 +353,11 @@ export async function handleIncomingWhatsAppMessage(
 
     // G. Formulate response with the generated ticket ID
     const escalationReplyText = `${aiResult.replyMessage}\n\nTicket ID: #${ticket.id}`;
-    await sendWhatsAppMessage(phoneNumber, escalationReplyText, conversation.id);
+    await sendWhatsAppMessage(phoneNumber, organizationId, escalationReplyText, conversation.id);
     return escalationReplyText;
   }
 
   // 6. Conversational Flow (No Escalation needed)
-  await sendWhatsAppMessage(phoneNumber, aiResult.replyMessage, conversation.id);
+  await sendWhatsAppMessage(phoneNumber, organizationId, aiResult.replyMessage, conversation.id);
   return aiResult.replyMessage;
 }

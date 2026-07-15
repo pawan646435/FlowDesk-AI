@@ -98,9 +98,12 @@ FlowDesk AI implements a fully serverless-compliant Retrieval-Augmented Generati
 ├── ARCHITECTURE.md                  # Detailed system design & database schema
 ├── DEPLOYMENT.md                    # Step-by-step setup (Neon, Google OAuth, Meta, Vercel)
 ├── workflows/                       # Importable JSON configurations for n8n
+│   ├── new-ticket-workflow.json
 │   ├── whatsapp-incoming-workflow.json
 │   ├── whatsapp-resolution-workflow.json
-│   └── high-priority-workflow.json
+│   ├── auto-escalation-workflow.json  # live escalation handler (webhook path: escalate-ticket)
+│   └── deprecated/
+│       └── high-priority-workflow.json  # superseded by auto-escalation-workflow.json; same webhook path, do not import both
 ├── prisma/
 │   └── schema.prisma                # Prisma DB models, relations & vector definition
 ├── scripts/

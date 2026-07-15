@@ -112,10 +112,13 @@ export async function processAndIndexDocument(documentId: string, tempFilePath: 
     for (let i = 0; i < chunks.length; i++) {
       const content = chunks[i];
       
-      // Create Database Chunk (without vector field first due to Prisma model limitations)
+      // Create Database Chunk (without vector field first due to Prisma model limitations).
+      // organizationId comes straight off the document row already fetched above — the
+      // document was created org-scoped at upload time, so this just carries it through.
       const dbChunk = await prisma.documentChunk.create({
         data: {
           documentId,
+          organizationId: doc.organizationId,
           chunkIndex: i,
           content,
         },
@@ -229,17 +232,17 @@ export async function recoverStuckDocuments(): Promise<number> {
 /**
  * Aggregates knowledge base statistics.
  */
-export async function getKnowledgeBaseStats() {
+export async function getKnowledgeBaseStats(organizationId: string) {
   const [
     totalDocs,
     indexedDocs,
     failedDocs,
     totalChunks,
   ] = await Promise.all([
-    prisma.knowledgeDocument.count(),
-    prisma.knowledgeDocument.count({ where: { status: "INDEXED" } }),
-    prisma.knowledgeDocument.count({ where: { status: "FAILED" } }),
-    prisma.documentChunk.count(),
+    prisma.knowledgeDocument.count({ where: { organizationId } }),
+    prisma.knowledgeDocument.count({ where: { status: "INDEXED", organizationId } }),
+    prisma.knowledgeDocument.count({ where: { status: "FAILED", organizationId } }),
+    prisma.documentChunk.count({ where: { organizationId } }),
   ]);
 
   return {

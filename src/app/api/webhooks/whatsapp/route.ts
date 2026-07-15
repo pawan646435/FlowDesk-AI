@@ -121,6 +121,7 @@ export async function POST(request: Request) {
     let customerName = "WhatsApp User";
     let text = "";
     let messageId = "";
+    let phoneNumberId = "";
     let isSimulator = false;
 
     // 2. Simulator Interface Support: Check for direct simplified JSON fields
@@ -129,7 +130,7 @@ export async function POST(request: Request) {
       customerName = body.customerName || "WhatsApp User";
       text = body.text;
       isSimulator = true;
-    } 
+    }
     // 3. Standard Meta Cloud API webhook parsing
     else {
       const entry = body.entry?.[0];
@@ -144,6 +145,10 @@ export async function POST(request: Request) {
         customerName = contact?.profile?.name || "WhatsApp User";
         text = message.text.body;
         messageId = message.id;
+        // MULTI_TENANCY_DESIGN.md §5 Option C: identifies which of our WhatsApp Business
+        // numbers the message arrived on, used below to resolve the owning organization.
+        // Always present in real Meta payloads; the current parsing simply never read it.
+        phoneNumberId = value?.metadata?.phone_number_id || "";
       }
     }
 
@@ -167,17 +172,43 @@ export async function POST(request: Request) {
       }
     }
 
+    // 4.5. Resolve which organization owns this conversation (MULTI_TENANCY_DESIGN.md §5
+    // Option C). Must happen before any WhatsAppConversation lookup, since phoneNumber is
+    // no longer globally unique — without an org, there's no way to know which namespace
+    // to search.
+    let organizationId: string;
+    if (isSimulator) {
+      // Dev/test tool that already bypasses Meta's real infrastructure entirely (signature
+      // verification, message-id dedup semantics) — it supplies organizationId directly
+      // rather than requiring a provisioned WhatsAppNumberMapping row just to be usable.
+      if (!body.organizationId) {
+        return NextResponse.json({ error: "organizationId is required for simulator requests." }, { status: 400 });
+      }
+      organizationId = body.organizationId;
+    } else {
+      if (!phoneNumberId) {
+        console.warn("[WhatsApp Webhook] [WARN] No phone_number_id in webhook metadata, cannot resolve organization. Ignoring message.");
+        return NextResponse.json({ success: true, message: "Ignored: missing phone_number_id metadata." });
+      }
+      const mapping = await prisma.whatsAppNumberMapping.findUnique({ where: { phoneNumberId } });
+      if (!mapping) {
+        console.warn(`[WhatsApp Webhook] [WARN] No WhatsAppNumberMapping found for phone_number_id ${phoneNumberId}. Ignoring message.`);
+        return NextResponse.json({ success: true, message: "Ignored: no organization mapped to this WhatsApp number." });
+      }
+      organizationId = mapping.organizationId;
+    }
+
     // 5. Execution branching:
     // Simulator requests run synchronously so the simulator page gets the reply in the HTTP response.
     if (isSimulator) {
-      const reply = await handleIncomingWhatsAppMessage(phoneNumber, customerName, text);
+      const reply = await handleIncomingWhatsAppMessage(phoneNumber, organizationId, customerName, text);
       return NextResponse.json({ success: true, reply });
-    } 
+    }
     // Meta requests run asynchronously to respond immediately within Meta's 5s timeout.
     else {
       console.log(`[WhatsApp Webhook] [INFO] Spawning background worker for message processing from ${phoneNumber}`);
 
-      const processPromise = handleIncomingWhatsAppMessage(phoneNumber, customerName, text)
+      const processPromise = handleIncomingWhatsAppMessage(phoneNumber, organizationId, customerName, text)
         .then((reply) => {
           console.log(`[WhatsApp Webhook] [INFO] Background worker successfully completed. Reply sent: "${reply}"`);
         })

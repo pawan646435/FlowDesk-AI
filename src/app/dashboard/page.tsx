@@ -8,17 +8,18 @@ import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert, 
 export default async function DashboardPage() {
   const session = await auth();
 
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     redirect("/login");
   }
 
   const userId = session.user.id;
+  const organizationId = session.user.organizationId;
 
   // Fetch data in parallel for optimal scaling
   const [stats, activities, tickets] = await Promise.all([
-    getTicketStats(userId),
-    getRecentActivities(userId, 5),
-    getTickets(userId),
+    getTicketStats(userId, organizationId),
+    getRecentActivities(userId, organizationId, 5),
+    getTickets(userId, organizationId),
   ]);
 
   const recentTickets = tickets.slice(0, 5);

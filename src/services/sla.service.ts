@@ -86,27 +86,36 @@ export async function checkSLABreaches() {
 
     claimedCount++;
 
-    // Create system log activity
+    // Create system log activity. organizationId comes straight off the ticket row
+    // already fetched by the (deliberately global, per §7) sweep above — no scoping
+    // is added to the sweep's own query, only to the Activity row it writes.
     await prisma.activity.create({
       data: {
         userId: ticket.userId,
+        organizationId: ticket.organizationId,
         ticketId: ticket.id,
         action: `SLA BREACHED: Ticket passed target deadline by ${breachDurationMin} minutes.`,
       },
     });
 
-    // Trigger n8n webhook
-    try {
-      const customerName = ticket.whatsAppConversation?.customerName || ticket.user.name || "System User";
-      await triggerSlaBreachWebhook({
-        ticketId: ticket.id,
-        priority: ticket.priority || TicketPriority.LOW,
-        category: ticket.category || "GENERAL_INQUIRY",
-        customerName,
-        breachDuration: `${breachDurationMin} minutes`,
-      });
-    } catch (webhookErr) {
-      console.error(`[SLA Monitor] Failed to trigger SLA breach webhook for ticket ${ticket.id}:`, webhookErr);
+    // Trigger n8n webhook. A null organizationId (pre-backfill legacy ticket) has no
+    // OrganizationWebhookConfig to look up, so skip cleanly rather than error — same
+    // outcome as an org that simply hasn't configured this webhook.
+    if (ticket.organizationId) {
+      try {
+        const customerName = ticket.whatsAppConversation?.customerName || ticket.user.name || "System User";
+        await triggerSlaBreachWebhook(ticket.organizationId, {
+          ticketId: ticket.id,
+          priority: ticket.priority || TicketPriority.LOW,
+          category: ticket.category || "GENERAL_INQUIRY",
+          customerName,
+          breachDuration: `${breachDurationMin} minutes`,
+        });
+      } catch (webhookErr) {
+        console.error(`[SLA Monitor] Failed to trigger SLA breach webhook for ticket ${ticket.id}:`, webhookErr);
+      }
+    } else {
+      console.log(`[SLA Monitor] Ticket ${ticket.id} has no organizationId, skipping SLA breach webhook.`);
     }
   }
 
@@ -116,7 +125,7 @@ export async function checkSLABreaches() {
 /**
  * Aggregates SLA statistics for the support dashboard metrics.
  */
-export async function getSLADashboardStats(userId: string) {
+export async function getSLADashboardStats(userId: string, organizationId: string) {
   const [
     activeSlasCount,
     breachedSlasCount,
@@ -127,6 +136,7 @@ export async function getSLADashboardStats(userId: string) {
     prisma.ticket.count({
       where: {
         userId,
+        organizationId,
         status: { not: TicketStatus.RESOLVED },
         firstResponseDueAt: { not: null },
       },
@@ -135,6 +145,7 @@ export async function getSLADashboardStats(userId: string) {
     prisma.ticket.count({
       where: {
         userId,
+        organizationId,
         status: { not: TicketStatus.RESOLVED },
         slaBreached: true,
       },
@@ -143,6 +154,7 @@ export async function getSLADashboardStats(userId: string) {
     prisma.ticket.count({
       where: {
         userId,
+        organizationId,
         status: TicketStatus.RESOLVED,
       },
     }),
@@ -150,6 +162,7 @@ export async function getSLADashboardStats(userId: string) {
     prisma.ticket.count({
       where: {
         userId,
+        organizationId,
         status: TicketStatus.RESOLVED,
         slaBreached: false,
       },
@@ -164,6 +177,7 @@ export async function getSLADashboardStats(userId: string) {
   const ticketsWithResponse = await prisma.ticket.findMany({
     where: {
       userId,
+      organizationId,
       firstResponseMet: true,
     },
     include: {

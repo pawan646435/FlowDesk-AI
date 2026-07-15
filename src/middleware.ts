@@ -9,8 +9,9 @@ export default auth((req) => {
 
   const isDashboard = nextUrl.pathname.startsWith("/dashboard");
   const isTickets = nextUrl.pathname.startsWith("/tickets");
+  const isSettings = nextUrl.pathname.startsWith("/settings");
 
-  if (isDashboard || isTickets) {
+  if (isDashboard || isTickets || isSettings) {
     if (!isLoggedIn) {
       // Redirect to login page
       return Response.redirect(new URL("/login", nextUrl));
@@ -18,7 +19,11 @@ export default auth((req) => {
   }
 
   if (nextUrl.pathname === "/login") {
-    if (isLoggedIn) {
+    // A present `error` param means a sign-in attempt just failed (e.g. the §9.4
+    // AccessDenied rejection) for whatever account was used in that attempt. Redirecting
+    // to /dashboard here would silently mask that rejection behind an unrelated, still-
+    // valid session left over from a previous account — let /login render the error.
+    if (isLoggedIn && !nextUrl.searchParams.has("error")) {
       // Redirect to dashboard page if already logged in
       return Response.redirect(new URL("/dashboard", nextUrl));
     }

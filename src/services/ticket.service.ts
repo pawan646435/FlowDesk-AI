@@ -3,7 +3,7 @@ import { TicketStatus, TicketPriority, TicketCategory, TicketSentiment, TicketSo
 import { analyzeTicket } from "@/services/gemini.service";
 import { triggerNewTicketWebhook, triggerEscalationWebhook, triggerNegativeSentimentWebhook, triggerResolutionWebhook, WebhookPayload } from "@/services/n8n.service";
 
-export async function createTicket(userId: string, data: { title: string; description: string; isHighPriority?: boolean }) {
+export async function createTicket(userId: string, organizationId: string, data: { title: string; description: string; isHighPriority?: boolean }) {
   // 1. Trigger AI classification prior to database transaction
   let aiResult = null;
   try {
@@ -26,6 +26,7 @@ export async function createTicket(userId: string, data: { title: string; descri
       title: data.title,
       description: data.description,
       userId,
+      organizationId,
       status: TicketStatus.OPEN,
       category: aiResult?.category as TicketCategory | null,
       priority: aiPriority,
@@ -45,6 +46,7 @@ export async function createTicket(userId: string, data: { title: string; descri
   await prisma.activity.create({
     data: {
       userId,
+      organizationId,
       ticketId: ticket.id,
       action: `Created ticket: "${ticket.title}"`,
     },
@@ -55,6 +57,7 @@ export async function createTicket(userId: string, data: { title: string; descri
     await prisma.activity.create({
       data: {
         userId,
+        organizationId,
         ticketId: ticket.id,
         action: `AI Analysis Completed: Category=${aiResult.category}, Priority=${aiResult.priority}, Sentiment=${aiResult.sentiment}`,
       },
@@ -74,11 +77,12 @@ export async function createTicket(userId: string, data: { title: string; descri
   // Trigger n8n Automation Webhooks asynchronously in the background
   (async () => {
     try {
-      const newTicketResponse = await triggerNewTicketWebhook(payload);
+      const newTicketResponse = await triggerNewTicketWebhook(organizationId, payload);
       if (newTicketResponse.success) {
         await prisma.activity.create({
           data: {
             userId,
+            organizationId,
             ticketId: ticket.id,
             action: "Workflow Triggered: New Ticket Automation",
           },
@@ -91,11 +95,12 @@ export async function createTicket(userId: string, data: { title: string; descri
     // Trigger Escalation Webhook if Priority is High or Critical
     if (ticket.priority === TicketPriority.HIGH || ticket.priority === TicketPriority.CRITICAL) {
       try {
-        const escalationResponse = await triggerEscalationWebhook(payload);
+        const escalationResponse = await triggerEscalationWebhook(organizationId, payload);
         if (escalationResponse.success) {
           await prisma.activity.create({
             data: {
               userId,
+              organizationId,
               ticketId: ticket.id,
               action: "High Priority Escalated: Alert sent to On-Call",
             },
@@ -109,11 +114,12 @@ export async function createTicket(userId: string, data: { title: string; descri
     // Trigger CS webhook if Sentiment is Negative
     if (ticket.sentiment === TicketSentiment.NEGATIVE) {
       try {
-        const csResponse = await triggerNegativeSentimentWebhook(payload);
+        const csResponse = await triggerNegativeSentimentWebhook(organizationId, payload);
         if (csResponse.success) {
           await prisma.activity.create({
             data: {
               userId,
+              organizationId,
               ticketId: ticket.id,
               action: "Negative Sentiment Alert: Customer success team notified",
             },
@@ -128,21 +134,23 @@ export async function createTicket(userId: string, data: { title: string; descri
   return ticket;
 }
 
-export async function getTickets(userId: string, status?: TicketStatus) {
+export async function getTickets(userId: string, organizationId: string, status?: TicketStatus) {
   return prisma.ticket.findMany({
     where: {
       userId,
+      organizationId,
       ...(status ? { status } : {}),
     },
     orderBy: { updatedAt: "desc" },
   });
 }
 
-export async function getTicketById(userId: string, ticketId: string) {
+export async function getTicketById(userId: string, organizationId: string, ticketId: string) {
   return prisma.ticket.findFirst({
     where: {
       id: ticketId,
       userId,
+      organizationId,
     },
     include: {
       activities: {
@@ -152,12 +160,12 @@ export async function getTicketById(userId: string, ticketId: string) {
   });
 }
 
-export async function updateTicketStatus(userId: string, ticketId: string, status: TicketStatus) {
+export async function updateTicketStatus(userId: string, organizationId: string, ticketId: string, status: TicketStatus) {
   console.log(`[DB Transaction Audit] Starting sequential database operations for status update...`);
   const dbStartTime = Date.now();
 
   const ticket = await prisma.ticket.findFirst({
-    where: { id: ticketId, userId },
+    where: { id: ticketId, userId, organizationId },
   });
 
   if (!ticket) {
@@ -176,6 +184,7 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
   await prisma.activity.create({
     data: {
       userId,
+      organizationId,
       ticketId,
       action: `Changed status of "${ticket.title}" to ${status}`,
     },
@@ -191,11 +200,12 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
           category: (updatedTicket.category || "GENERAL_INQUIRY") as WebhookPayload["category"],
           priority: (updatedTicket.priority || "LOW") as WebhookPayload["priority"],
         };
-        const resolutionResponse = await triggerResolutionWebhook(payload);
+        const resolutionResponse = await triggerResolutionWebhook(organizationId, payload);
         if (resolutionResponse.success) {
           await prisma.activity.create({
             data: {
               userId,
+              organizationId,
               ticketId,
               action: "Workflow Triggered: Ticket Resolution Automation",
             },
@@ -210,7 +220,7 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
   // Check for associated WhatsApp conversation and dispatch event-driven updates
   try {
     const whatsAppConv = await prisma.whatsAppConversation.findFirst({
-      where: { ticketId: ticketId }
+      where: { ticketId: ticketId, organizationId }
     });
 
     if (whatsAppConv) {
@@ -229,7 +239,7 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
         messageText = `Update: Our engineering team is now actively working on your ticket #${ticketId} ("${ticket.title}"). We will keep you updated on progress.`;
       }
 
-      await sendWhatsAppMessage(whatsAppConv.phoneNumber, messageText, whatsAppConv.id);
+      await sendWhatsAppMessage(whatsAppConv.phoneNumber, organizationId, messageText, whatsAppConv.id);
     }
   } catch (whatsappErr) {
     console.error("Failed to send WhatsApp status update notification:", whatsappErr);
@@ -239,11 +249,11 @@ export async function updateTicketStatus(userId: string, ticketId: string, statu
   return updatedTicket;
 }
 
-export async function getTicketStats(userId: string) {
+export async function getTicketStats(userId: string, organizationId: string) {
   const [
-    statusStats, 
-    slaBreachedStats, 
-    categoryStats, 
+    statusStats,
+    slaBreachedStats,
+    categoryStats,
     sentimentStats,
     whatsAppConversationCount,
     whatsAppTicketsCount,
@@ -252,13 +262,14 @@ export async function getTicketStats(userId: string) {
     // Fetch status groupings
     prisma.ticket.groupBy({
       by: ['status'],
-      where: { userId },
+      where: { userId, organizationId },
       _count: { id: true },
     }),
     // Fetch active SLA breached count (exclude resolved tickets)
     prisma.ticket.count({
       where: {
         userId,
+        organizationId,
         slaBreached: true,
         status: { not: TicketStatus.RESOLVED },
       },
@@ -268,6 +279,7 @@ export async function getTicketStats(userId: string) {
       by: ['category'],
       where: {
         userId,
+        organizationId,
         category: { not: null },
       },
       _count: { id: true },
@@ -277,17 +289,18 @@ export async function getTicketStats(userId: string) {
       by: ['sentiment'],
       where: {
         userId,
+        organizationId,
         sentiment: { not: null },
       },
       _count: { id: true },
     }),
     // WhatsApp session statistics
-    prisma.whatsAppConversation.count(),
+    prisma.whatsAppConversation.count({ where: { organizationId } }),
     prisma.ticket.count({
-      where: { userId, source: TicketSource.WHATSAPP }
+      where: { userId, organizationId, source: TicketSource.WHATSAPP }
     }),
     prisma.ticket.count({
-      where: { userId, source: TicketSource.WEB }
+      where: { userId, organizationId, source: TicketSource.WEB }
     })
   ]);
 
@@ -315,7 +328,7 @@ export async function getTicketStats(userId: string) {
   }));
 
   const { getSLADashboardStats } = await import("@/services/sla.service");
-  const slaStats = await getSLADashboardStats(userId);
+  const slaStats = await getSLADashboardStats(userId, organizationId);
 
   return {
     total,
@@ -332,10 +345,11 @@ export async function getTicketStats(userId: string) {
   };
 }
 
-export async function getQueueTickets(userId: string) {
+export async function getQueueTickets(userId: string, organizationId: string) {
   return prisma.ticket.findMany({
     where: {
       userId,
+      organizationId,
       status: { not: TicketStatus.RESOLVED },
     },
     include: {
