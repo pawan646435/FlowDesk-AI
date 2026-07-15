@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { processAndIndexDocument, getKnowledgeBaseStats } from "@/services/knowledge.service";
 import { getRAGAnalytics } from "@/services/rag.service";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 // GET handler to list documents and aggregate analytics
@@ -70,12 +71,12 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Save temporary file in workspace uploads dir
-    const uploadDir = path.join(process.cwd(), "tmp");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
+    // os.tmpdir() (not process.cwd()) — Vercel's deployed function bundle is read-only
+    // at runtime; only /tmp is writable, and os.tmpdir() resolves to it there while
+    // still resolving to a real, writable local temp dir in dev. A process.cwd()-based
+    // path works locally (the whole filesystem is writable) but throws EROFS/EACCES on
+    // Vercel, since it points inside the read-only bundle, not /tmp.
+    const uploadDir = os.tmpdir();
     const tempFilePath = path.join(uploadDir, `${Date.now()}-${fileName}`);
     fs.writeFileSync(tempFilePath, buffer);
 

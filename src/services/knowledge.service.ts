@@ -176,7 +176,7 @@ const STUCK_PROCESSING_THRESHOLD_MS = 10 * 60 * 1000;
  * and marks them FAILED with a clear reason.
  *
  * This does NOT retry or resume processing. The uploaded file only ever existed as an
- * ephemeral local path (./tmp/...) on the specific serverless instance that received
+ * ephemeral path under os.tmpdir() on the specific serverless instance that received
  * the upload; once that instance is frozen or recycled, the source bytes are gone with
  * no durable copy anywhere. A stuck document therefore can't be safely re-parsed,
  * re-chunked, or re-embedded from where it left off — there is nothing left to resume
