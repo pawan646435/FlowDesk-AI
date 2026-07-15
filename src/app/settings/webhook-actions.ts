@@ -1,13 +1,15 @@
 "use server";
 
-import { auth } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import { upsertOrganizationWebhookConfig } from "@/services/organization.service";
 import { webhookConfigSchema } from "@/lib/validation";
 import { revalidatePath } from "next/cache";
 
 export async function saveWebhookConfigAction(prevState: unknown, formData: FormData) {
-  const session = await auth();
-  if (!session || !session.user?.id || !session.user?.organizationId) {
+  // TEAM_REMOVAL_DESIGN.md §1.4 — same reasoning as sendInviteAction: checked for
+  // staleness inline, not just on page load.
+  const session = await getVerifiedSession({ onStale: "unauthorized" });
+  if (!session) {
     return { error: "Unauthorized" };
   }
   if (session.user.role !== "OWNER") {

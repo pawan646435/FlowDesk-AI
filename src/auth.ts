@@ -9,22 +9,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   ...authConfig,
   callbacks: {
-    // MULTI_TENANCY_DESIGN.md §9.4 — the gate that prevents PrismaAdapter from ever
-    // creating a User row in the first place. Fires before any DB write for a new
-    // sign-in: returning false here stops the flow before `createUser` runs, which is
-    // why this check lives here and not in `jwt` below (by the time `jwt` fires with a
-    // populated `user`, the adapter has already created the row — too late to prevent it).
+    // JOIN_REQUEST_DESIGN.md §2.1 — supersedes MULTI_TENANCY_DESIGN.md §9.4's
+    // deny-by-default gate. Previously rejected any Google account with no existing User
+    // and no matching Invite, preventing PrismaAdapter from ever creating a User row for
+    // them. Now allows any authenticated Google account through — a first-time sign-in
+    // with no invite lands as a real, orgless User row instead of being rejected, and can
+    // request access via the /onboarding join-request flow. Still rejects a missing
+    // email: not part of what's being loosened, just a guard against a malformed/
+    // misconfigured OAuth response (nothing downstream — User.email's unique constraint,
+    // Invite/JoinRequest lookups by email — can function without one).
     async signIn({ user, profile }) {
       const email = profile?.email ?? user?.email;
       if (!email) return false;
-
-      const existingUser = await prisma.user.findUnique({ where: { email } });
-      if (existingUser) return true; // returning user, always allowed back in
-
-      const validInvite = await prisma.invite.findFirst({
-        where: { email, acceptedAt: null, expiresAt: { gt: new Date() } },
-      });
-      return !!validInvite; // false -> Auth.js redirects to /login with an error, no User row is created
+      return true;
     },
     // MULTI_TENANCY_DESIGN.md §2.2, extended by §9.3 (invite consumption) and §9.6 (role).
     // `user` is only populated on the initial sign-in call, never on token refresh.
@@ -37,8 +34,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.organizationId = user.organizationId;
           token.role = user.role ?? null;
         } else if (user.email) {
-          // Brand-new user with no org yet — can only reach this state via the signIn
-          // gate above, which already confirmed a valid Invite exists for this email.
+          // Brand-new user with no org yet. Previously could only reach this branch via
+          // the signIn gate having already confirmed a valid Invite exists (§9.4's
+          // deny-by-default). JOIN_REQUEST_DESIGN.md §2.1 loosened that gate, so this is
+          // now a genuinely reachable, normal case too — a first-time sign-in with no
+          // invite at all. The invite lookup below still matters (an invited user should
+          // land pre-assigned to their org), it just no longer gates whether sign-in
+          // succeeds in the first place.
           const invite = await prisma.invite.findFirst({
             where: { email: user.email, acceptedAt: null, expiresAt: { gt: new Date() } },
             orderBy: { createdAt: "desc" },
@@ -60,8 +62,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             token.organizationId = updatedUser.organizationId;
             token.role = updatedUser.role;
           } else {
-            // Should be unreachable given the signIn gate, but keep the token's shape
-            // consistent (string | null, never undefined) rather than leaving it unset.
+            // No pending invite — genuinely reachable now (JOIN_REQUEST_DESIGN.md §2.1),
+            // not the dead branch it used to be. Keep the token's shape consistent
+            // (string | null, never undefined) rather than leaving it unset; the
+            // /onboarding page (§3.2) is where this user lands next.
             token.organizationId = null;
             token.role = null;
           }

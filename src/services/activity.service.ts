@@ -16,9 +16,9 @@ export async function createActivity(userId: string, organizationId: string, tic
   });
 }
 
-export async function getRecentActivities(userId: string, organizationId: string, limit = 10) {
+export async function getRecentActivities(organizationId: string, limit = 10) {
   return prisma.activity.findMany({
-    where: { userId, organizationId },
+    where: { organizationId },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: {

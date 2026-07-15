@@ -1,4 +1,5 @@
-import { signIn, signOut, auth } from "@/auth";
+import { signIn, signOut } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { Ticket, AlertCircle, LogOut } from "lucide-react";
 
@@ -8,14 +9,26 @@ interface PageProps {
 
 export default async function LoginPage({ searchParams }: PageProps) {
   const { error } = await searchParams;
-  const session = await auth();
+  // DB-aware, not raw auth() — a stale-but-well-formed JWT (removed/switched org since
+  // the token was issued) must not bounce back to /dashboard here, or it recreates the
+  // exact loop this file's getVerifiedSession() redirect is meant to resolve. See
+  // middleware.ts's matching comment for the full mechanism.
+  //
+  // requireOrg: false — JOIN_REQUEST_DESIGN.md §1.2/§3.3: an authenticated-but-orgless
+  // session must be recognized as a real signed-in session here too, not just by the
+  // navbar (root layout). Without this, this page's own body would fall through to the
+  // "Continue with Google" branch below for an orgless user — reopening exactly the gap
+  // the account-linking security fix closed (that fix requires never offering that button
+  // while ANY session exists, orgless or not; the previous requireOrg: true default was
+  // silently treating "orgless" as "no session" and defeating that guarantee here).
+  const session = await getVerifiedSession({ onStale: "unauthorized", requireOrg: false });
 
   // A present `error` means a sign-in attempt (e.g. the §9.4 AccessDenied rejection)
-  // just failed for whatever account was used in that attempt. Auto-redirecting to
-  // /dashboard here would silently mask that rejection behind an unrelated, still-valid
-  // session left over from a previous account — show the error instead, even if signed in.
+  // just failed for whatever account was used in that attempt. Auto-redirecting away
+  // here would silently mask that rejection behind an unrelated, still-valid session
+  // left over from a previous account — show the error instead, even if signed in.
   if (session?.user?.id && !error) {
-    redirect("/dashboard");
+    redirect(session.user.organizationId ? "/dashboard" : "/onboarding");
   }
 
   return (

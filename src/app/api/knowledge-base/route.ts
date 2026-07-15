@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import prisma from "@/lib/prisma";
 import { processAndIndexDocument, getKnowledgeBaseStats } from "@/services/knowledge.service";
 import { getRAGAnalytics } from "@/services/rag.service";
@@ -8,8 +8,8 @@ import path from "path";
 
 // GET handler to list documents and aggregate analytics
 export async function GET() {
-  const session = await auth();
-  if (!session || !session.user?.id || !session.user?.organizationId) {
+  const session = await getVerifiedSession({ onStale: "unauthorized" });
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -40,8 +40,8 @@ export async function GET() {
 
 // POST handler to upload a document
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session || !session.user?.id || !session.user?.organizationId) {
+  const session = await getVerifiedSession({ onStale: "unauthorized" });
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

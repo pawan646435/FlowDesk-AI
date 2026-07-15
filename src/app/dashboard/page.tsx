@@ -1,26 +1,54 @@
-import { auth } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getTicketStats, getTickets } from "@/services/ticket.service";
 import { getRecentActivities } from "@/services/activity.service";
-import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert, Smartphone } from "lucide-react";
+import {
+  getOrganizationMembersWithOpenTicketCount,
+  getOrganizationWebhookConfig,
+  getWhatsAppNumberMapping,
+  getPendingInvitesForUser,
+} from "@/services/organization.service";
+import { Ticket, Clock, CheckCircle, ListTodo, ArrowUpRight, Plus, ShieldAlert, Smartphone, Users, Crown, Webhook, CheckCircle2, XCircle, Mail } from "lucide-react";
 
 export default async function DashboardPage() {
-  const session = await auth();
-
-  if (!session || !session.user?.id || !session.user?.organizationId) {
-    redirect("/login");
+  // JOIN_REQUEST_DESIGN.md §3.3 open decision #2, resolved: centralize the
+  // unauthenticated-vs-orgless redirect distinction here rather than in /login. requireOrg:
+  // false only distinguishes "no session at all" (still redirects to /login, inside the
+  // helper) from "authenticated, no org" (returned here, redirected to /onboarding below) —
+  // once organizationId is confirmed present, the second call re-applies the full
+  // requireOrg: true staleness guarantee every other protected page already relies on.
+  const initialSession = await getVerifiedSession({ onStale: "redirect", requireOrg: false });
+  if (!initialSession.user.organizationId) {
+    redirect("/onboarding");
   }
 
-  const userId = session.user.id;
-  const organizationId = session.user.organizationId;
+  const session = await getVerifiedSession();
 
-  // Fetch data in parallel for optimal scaling
-  const [stats, activities, tickets] = await Promise.all([
-    getTicketStats(userId, organizationId),
-    getRecentActivities(userId, organizationId, 5),
-    getTickets(userId, organizationId),
+  const organizationId = session.user.organizationId;
+  const isOwner = session.user.role === "OWNER";
+
+  // Fetch data in parallel for optimal scaling. The OWNER-only widgets' data is fetched
+  // conditionally (Promise.resolve(null) placeholders otherwise) rather than always
+  // fetching and just not rendering — no reason to run the extra groupBy/lookups on
+  // every MEMBER dashboard load. Reuses the exact session.user.role === "OWNER" pattern
+  // already established on /settings — no new gating mechanism.
+  const [stats, activities, tickets, members, webhookConfig, whatsAppMapping, pendingInvites] = await Promise.all([
+    getTicketStats(organizationId),
+    getRecentActivities(organizationId, 5),
+    getTickets(organizationId),
+    isOwner ? getOrganizationMembersWithOpenTicketCount(organizationId) : Promise.resolve(null),
+    isOwner ? getOrganizationWebhookConfig(organizationId) : Promise.resolve(null),
+    isOwner ? getWhatsAppNumberMapping(organizationId) : Promise.resolve(null),
+    // TEAM_REMOVAL_DESIGN.md §3.4 — small discoverability banner, /settings stays the
+    // primary location (full list, actions). This only needs a count, not full invite
+    // details, to decide whether to render.
+    session.user.email ? getPendingInvitesForUser(session.user.email) : Promise.resolve([]),
   ]);
+
+  const otherOrgPendingInviteCount = pendingInvites.filter(
+    (inv) => inv.organizationId !== organizationId
+  ).length;
 
   const recentTickets = tickets.slice(0, 5);
 
@@ -76,6 +104,26 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* TEAM_REMOVAL_DESIGN.md §3.4 — small discoverability nudge; the full list and
+          accept/switch actions live on /settings, this just points there. */}
+      {otherOrgPendingInviteCount > 0 && (
+        <Link
+          href="/settings"
+          className="flex items-center justify-between rounded-2xl border border-primary/30 glass p-4 hover:border-primary/50 transition-all cursor-pointer glow-purple"
+        >
+          <div className="flex items-center gap-3">
+            <Mail className="h-5 w-5 text-primary shrink-0" />
+            <p className="text-sm font-medium text-foreground">
+              You have {otherOrgPendingInviteCount} pending {otherOrgPendingInviteCount === 1 ? "invite" : "invites"} to {otherOrgPendingInviteCount === 1 ? "another organization" : "other organizations"}.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-primary flex items-center gap-1 shrink-0">
+            View in Settings
+            <ArrowUpRight className="h-3 w-3" />
+          </span>
+        </Link>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-4">
@@ -454,6 +502,93 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ORG_ONBOARDING_DESIGN.md §2.3 — OWNER-only widgets, additional to the shared
+          org-wide dashboard above. Everyone (OWNER and MEMBER) already sees the same
+          ticket data via the sections above; these two sections are extra, not a
+          different scope of ticket visibility. */}
+      {isOwner && members && (
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+          {/* Team Overview */}
+          <div className="rounded-2xl border border-border/40 glass overflow-hidden">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-border/40">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold">Team Overview</h3>
+            </div>
+            <div className="divide-y divide-border/30">
+              {members.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between px-6 py-4"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground truncate">
+                      {member.name || "Unnamed"}
+                    </p>
+                    <p className="text-sm text-muted-foreground truncate">{member.email}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="rounded-xl bg-primary/10 text-primary border border-primary/20 px-3 py-1 text-xs font-bold">
+                      {member.openTicketCount} open
+                    </span>
+                    {member.role === "OWNER" && (
+                      <span className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        <Crown className="h-3 w-3" />
+                        Owner
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Integration Health */}
+          <div className="rounded-2xl border border-border/40 glass overflow-hidden">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-border/40">
+              <Webhook className="h-5 w-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold">Integration Health</h3>
+            </div>
+            <div className="divide-y divide-border/30">
+              {[
+                { label: "New Ticket webhook", configured: !!webhookConfig?.newTicketUrl },
+                { label: "Escalation webhook", configured: !!webhookConfig?.escalationUrl },
+                { label: "Negative Sentiment webhook", configured: !!webhookConfig?.negativeSentimentUrl },
+                { label: "Resolution webhook", configured: !!webhookConfig?.resolutionUrl },
+                { label: "SLA Breach webhook", configured: !!webhookConfig?.slaBreachUrl },
+                { label: "WhatsApp number", configured: !!whatsAppMapping },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between px-6 py-3.5"
+                >
+                  <span className="text-sm text-foreground">{item.label}</span>
+                  {item.configured ? (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Configured
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                      <XCircle className="h-4 w-4" />
+                      Not configured
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-3 border-t border-border/40">
+              <Link
+                href="/settings"
+                className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Manage in Settings
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

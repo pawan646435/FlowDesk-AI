@@ -1,6 +1,7 @@
-import { auth } from "@/auth";
-import { getInviteByToken } from "@/services/organization.service";
-import { Building2, AlertCircle, LogOut } from "lucide-react";
+import { getVerifiedSession } from "@/lib/session";
+import { getInviteByToken, getOrganizationProfile } from "@/services/organization.service";
+import { LeaveAndJoinButton } from "@/components/leave-and-join-button";
+import { Building2, AlertCircle, LogOut, ArrowRightLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 
 interface PageProps {
@@ -24,7 +25,30 @@ export default async function AcceptInvitePage({ searchParams }: PageProps) {
   // a new one. The only reliable fix is never offering that button while a session exists —
   // require an explicit sign-out (via the real signOut() server action, not a client-only
   // one) before letting them proceed.
-  const existingSession = await auth();
+  //
+  // DB-verified, not raw auth() — TEAM_REMOVAL_DESIGN.md §1's staleness check applies
+  // here too: a stale-but-well-formed session must not be misclassified as "signed in to
+  // Org X" when the DB says otherwise.
+  //
+  // requireOrg: false — same fix as /login (JOIN_REQUEST_DESIGN.md §1.2/§3.3): an
+  // authenticated-but-orgless user must still be recognized as signed in here, or this
+  // page falls through to the "Continue with Google" branch below and reopens the
+  // account-linking gap that branch's own guard exists to close.
+  const existingSession = await getVerifiedSession({ onStale: "unauthorized", requireOrg: false });
+
+  // TEAM_REMOVAL_DESIGN.md §3.3 — the third branch: existing session AND that session's
+  // org differs from the invite's target org. Only meaningful when both the invite and
+  // the session are otherwise valid (checked below).
+  const isDifferentOrgSwitch =
+    !!existingSession?.user?.id &&
+    !!invite &&
+    !invite.acceptedAt &&
+    invite.expiresAt >= new Date() &&
+    existingSession.user.organizationId !== invite.organizationId;
+
+  const currentOrgProfile = isDifferentOrgSwitch && existingSession?.user?.organizationId
+    ? await getOrganizationProfile(existingSession.user.organizationId)
+    : null;
 
   let errorMessage: string | null = null;
   if (!invite) {
@@ -51,6 +75,24 @@ export default async function AcceptInvitePage({ searchParams }: PageProps) {
               <a href="/login" className="text-primary hover:underline">
                 Back to sign in
               </a>
+            </div>
+          </>
+        ) : isDifferentOrgSwitch ? (
+          <>
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 shadow-lg mb-4">
+                <ArrowRightLeft className="h-6 w-6" />
+              </div>
+              <h2 className="text-2xl font-bold tracking-tight">Switch organizations?</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                You&apos;re signed in to <span className="font-semibold text-foreground">{currentOrgProfile?.name ?? "your current organization"}</span>. Accepting this invite to join <span className="font-semibold text-foreground">{invite!.organization.name}</span> will remove you from your current organization first — you cannot belong to both.
+              </p>
+            </div>
+
+            <LeaveAndJoinButton inviteId={invite!.id} targetOrgName={invite!.organization.name} />
+
+            <div className="text-center text-xs text-muted-foreground pt-4 border-t border-border/20">
+              You&apos;ll need to sign in again after switching.
             </div>
           </>
         ) : existingSession?.user?.id ? (

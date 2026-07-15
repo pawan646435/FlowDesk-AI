@@ -23,6 +23,8 @@ model User {
   sessions       Session[]
   tickets        Ticket[]
   invitesSent    Invite[]
+  joinRequestsMade     JoinRequest[] @relation("JoinRequestsMade")
+  joinRequestsResolved JoinRequest[] @relation("JoinRequestsResolved")
 
   @@index([organizationId])
 }
@@ -249,12 +251,41 @@ model ProcessedWebhookEvent {
 }
 
 // MULTI_TENANCY_DESIGN.md §1
+// ORG_ONBOARDING_DESIGN.md §1.2 — richer signup fields. Nullable at the schema layer even
+// though the create-organization form requires industry/size (matches the established
+// "form enforces required-ness, column stays permissive" pattern from
+// MULTI_TENANCY_DESIGN.md §9.6's User.organizationId reasoning) — avoids ever needing a
+// schema migration if a future non-form code path creates an Organization without these.
+enum CompanyIndustry {
+  SOFTWARE_TECH
+  ECOMMERCE_RETAIL
+  FINANCE_BANKING
+  HEALTHCARE
+  EDUCATION
+  HOSPITALITY_TRAVEL
+  MEDIA_ENTERTAINMENT
+  PROFESSIONAL_SERVICES
+  OTHER
+}
+
+enum CompanySize {
+  SIZE_1_10
+  SIZE_11_50
+  SIZE_51_200
+  SIZE_201_1000
+  SIZE_1000_PLUS
+}
+
 model Organization {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique // URL-safe identifier; also the natural key for subdomain routing later
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  industry CompanyIndustry? // required at the create-organization form layer, nullable here — see comment above
+  size     CompanySize? // same as industry
+  website  String? // genuinely optional, not every org has one at signup time
 
   users                  User[]
   tickets                Ticket[]
@@ -266,6 +297,7 @@ model Organization {
   invites                Invite[]
   whatsAppNumberMappings WhatsAppNumberMapping[]
   webhookConfig          OrganizationWebhookConfig?
+  joinRequests           JoinRequest[]
 }
 
 // MULTI_TENANCY_DESIGN.md §7 — per-org n8n webhook routing. All 5 URLs are nullable and
@@ -309,6 +341,38 @@ model Invite {
   @@unique([organizationId, email])
   @@index([email])
   @@index([token])
+}
+
+// JOIN_REQUEST_DESIGN.md §4 — a second path into an org, alongside owner-initiated
+// invites: an authenticated-but-orgless user requests access via an org owner's email;
+// the owner approves or rejects from /settings.
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model JoinRequest {
+  id                  String            @id @default(cuid())
+  requesterId         String
+  organizationId      String
+  status              JoinRequestStatus @default(PENDING)
+  requestedOwnerEmail String // what the requester actually typed, kept for owner-side UI/audit even though it resolves to organizationId
+  createdAt           DateTime          @default(now())
+  resolvedAt          DateTime?
+  resolvedById        String? // the OWNER who approved/rejected; null while PENDING
+
+  requester    User         @relation("JoinRequestsMade", fields: [requesterId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade (unlike Invite.invitedBy) — a User row is never actually deleted
+  // by this app (removal/leaving is always an update, per TEAM_REMOVAL_DESIGN.md §4/§5),
+  // so this only matters via the break-glass DB-manipulation path already flagged as out
+  // of scope elsewhere; SetNull preserves the JoinRequest as a decision record even then.
+  resolvedBy   User?        @relation("JoinRequestsResolved", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([requesterId, organizationId, status])
+  @@index([organizationId, status])
+  @@index([requesterId])
 }
 
 // MULTI_TENANCY_DESIGN.md §5 Option C — per-org WhatsApp Business phone number routing.

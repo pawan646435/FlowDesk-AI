@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import { generateEmbedding, searchSimilarity } from "@/services/rag.service";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session || !session.user?.id || !session.user?.organizationId) {
+  const session = await getVerifiedSession({ onStale: "unauthorized" });
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

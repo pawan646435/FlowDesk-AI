@@ -125,7 +125,7 @@ export async function checkSLABreaches() {
 /**
  * Aggregates SLA statistics for the support dashboard metrics.
  */
-export async function getSLADashboardStats(userId: string, organizationId: string) {
+export async function getSLADashboardStats(organizationId: string) {
   const [
     activeSlasCount,
     breachedSlasCount,
@@ -135,7 +135,6 @@ export async function getSLADashboardStats(userId: string, organizationId: strin
     // Active SLAs (tickets under SLA monitoring that are not resolved)
     prisma.ticket.count({
       where: {
-        userId,
         organizationId,
         status: { not: TicketStatus.RESOLVED },
         firstResponseDueAt: { not: null },
@@ -144,7 +143,6 @@ export async function getSLADashboardStats(userId: string, organizationId: strin
     // Breached active SLAs
     prisma.ticket.count({
       where: {
-        userId,
         organizationId,
         status: { not: TicketStatus.RESOLVED },
         slaBreached: true,
@@ -153,7 +151,6 @@ export async function getSLADashboardStats(userId: string, organizationId: strin
     // Total resolved tickets
     prisma.ticket.count({
       where: {
-        userId,
         organizationId,
         status: TicketStatus.RESOLVED,
       },
@@ -161,7 +158,6 @@ export async function getSLADashboardStats(userId: string, organizationId: strin
     // Compliant resolved tickets (resolved without breaching)
     prisma.ticket.count({
       where: {
-        userId,
         organizationId,
         status: TicketStatus.RESOLVED,
         slaBreached: false,
@@ -176,7 +172,6 @@ export async function getSLADashboardStats(userId: string, organizationId: strin
   // Calculate Average Response Time for responded tickets
   const ticketsWithResponse = await prisma.ticket.findMany({
     where: {
-      userId,
       organizationId,
       firstResponseMet: true,
     },
