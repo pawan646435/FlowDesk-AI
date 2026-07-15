@@ -10,11 +10,11 @@ type QueueTicket = Prisma.TicketGetPayload<{ include: { user: true } }>;
 export default async function QueuePage() {
   const session = await auth();
 
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     redirect("/login");
   }
 
-  const tickets = await getQueueTickets(session.user.id);
+  const tickets = await getQueueTickets(session.user.id, session.user.organizationId);
 
   // Group tickets: Section A (HIGH or CRITICAL) vs Section B (LOW, MEDIUM, or null)
   const highPriorityTickets = tickets.filter(

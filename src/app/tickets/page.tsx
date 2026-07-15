@@ -13,7 +13,7 @@ interface PageProps {
 export default async function TicketsPage({ searchParams }: PageProps) {
   const session = await auth();
 
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     redirect("/login");
   }
 
@@ -29,7 +29,7 @@ export default async function TicketsPage({ searchParams }: PageProps) {
     statusQuery = filterStatus as TicketStatus;
   }
 
-  const tickets = await getTickets(session.user.id, statusQuery);
+  const tickets = await getTickets(session.user.id, session.user.organizationId, statusQuery);
 
   const filters = [
     { label: "All Tickets", value: "" },

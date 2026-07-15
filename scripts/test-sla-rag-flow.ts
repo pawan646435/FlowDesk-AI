@@ -24,7 +24,11 @@ async function runTests() {
       },
     });
   }
+  if (!testUser.organizationId) {
+    throw new Error("Test user has no organizationId. Run scripts/backfill-demo-org.ts first.");
+  }
   const userId = testUser.id;
+  const organizationId = testUser.organizationId;
 
   // ----------------------------------------------------
   // TEST 1: SLA Calculators
@@ -55,6 +59,7 @@ async function runTests() {
       title: "Test SLA Resolution Breach",
       description: "This ticket has already expired past the SLA timeline.",
       userId,
+      organizationId,
       status: TicketStatus.OPEN,
       priority: TicketPriority.HIGH,
       firstResponseDueAt: new Date(now - 30 * 60 * 1000), // 30 mins ago
@@ -124,6 +129,7 @@ async function runTests() {
       fileName: "return_policy.txt",
       fileType: "text/plain",
       status: "INDEXED",
+      organizationId,
     },
   });
 
@@ -138,6 +144,7 @@ async function runTests() {
     const chunk = await prisma.documentChunk.create({
       data: {
         documentId: mockDoc.id,
+        organizationId,
         chunkIndex: i,
         content: chunkTexts[i],
       },
@@ -152,7 +159,7 @@ async function runTests() {
   // Execute similarity search
   console.log("- Querying vector database for similarity to: 'How do I get a refund?'");
   const queryEmbedding = await generateEmbedding("How do I get a refund?");
-  const matches = await searchSimilarity(queryEmbedding, 3, 0.6);
+  const matches = await searchSimilarity(queryEmbedding, organizationId, 3, 0.6);
 
   console.log(`- Retrieved matching chunks count: ${matches.length}`);
   matches.forEach((m, idx) => {
@@ -171,7 +178,7 @@ async function runTests() {
   const incomingMessage = "I purchased a subscription yesterday. Can I get a refund?";
   
   console.log(`- Dispatching customer query: "${incomingMessage}"`);
-  const aiResponse = await analyzeWhatsAppMessage(incomingMessage, [], userId);
+  const aiResponse = await analyzeWhatsAppMessage(incomingMessage, [], organizationId, userId);
 
   console.log(`- AI Reply Message: "${aiResponse.replyMessage}"`);
   console.log(`- Needs Escalation: ${aiResponse.needsEscalation} (Expected: false since RAG answers it)`);

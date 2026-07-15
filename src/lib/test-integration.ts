@@ -10,12 +10,16 @@ async function runTest() {
     console.error("Error: No users found in database. Please register/log in via browser first.");
     process.exit(1);
   }
+  if (!user.organizationId) {
+    console.error("Error: User has no organizationId. Run scripts/backfill-demo-org.ts first.");
+    process.exit(1);
+  }
 
   console.log(`Found active user: ${user.name} (${user.email})`);
   console.log("Creating test ticket with critical billing contents...");
 
   // 2. Trigger ticket creation (which runs Gemini AI & calls n8n webhooks)
-  const ticket = await createTicket(user.id, {
+  const ticket = await createTicket(user.id, user.organizationId, {
     title: "Urgent: credit card charged twice",
     description: "I checked my billing statement today and noticed that my credit card was charged twice for the same transaction. I want an immediate refund of the duplicate charge. Please help!",
   });

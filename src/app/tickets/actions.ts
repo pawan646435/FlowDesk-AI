@@ -9,7 +9,7 @@ import { TicketStatus } from "@prisma/client";
 
 export async function createTicketAction(prevState: unknown, formData: FormData) {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return { error: "Unauthorized" };
   }
 
@@ -26,7 +26,7 @@ export async function createTicketAction(prevState: unknown, formData: FormData)
   }
 
   try {
-    await createTicket(session.user.id, validation.data);
+    await createTicket(session.user.id, session.user.organizationId, validation.data);
     revalidatePath("/tickets");
     revalidatePath("/dashboard");
     return { success: true };
@@ -38,7 +38,7 @@ export async function createTicketAction(prevState: unknown, formData: FormData)
 
 export async function updateTicketStatusAction(ticketId: string, status: TicketStatus) {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return { error: "Unauthorized" };
   }
 
@@ -48,7 +48,7 @@ export async function updateTicketStatusAction(ticketId: string, status: TicketS
   }
 
   try {
-    await updateTicketStatus(session.user.id, ticketId, status);
+    await updateTicketStatus(session.user.id, session.user.organizationId, ticketId, status);
     revalidatePath("/tickets");
     revalidatePath(`/tickets/${ticketId}`);
     revalidatePath("/dashboard");
@@ -61,7 +61,7 @@ export async function updateTicketStatusAction(ticketId: string, status: TicketS
 
 export async function testEscalationAction() {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return { error: "Unauthorized" };
   }
 
@@ -73,7 +73,7 @@ export async function testEscalationAction() {
   };
 
   try {
-    const response = await triggerEscalationWebhook(payload);
+    const response = await triggerEscalationWebhook(session.user.organizationId, payload);
     return response;
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : "Internal action execution error";
