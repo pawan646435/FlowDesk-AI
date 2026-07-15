@@ -18,16 +18,14 @@ export default auth((req) => {
     }
   }
 
-  if (nextUrl.pathname === "/login") {
-    // A present `error` param means a sign-in attempt just failed (e.g. the §9.4
-    // AccessDenied rejection) for whatever account was used in that attempt. Redirecting
-    // to /dashboard here would silently mask that rejection behind an unrelated, still-
-    // valid session left over from a previous account — let /login render the error.
-    if (isLoggedIn && !nextUrl.searchParams.has("error")) {
-      // Redirect to dashboard page if already logged in
-      return Response.redirect(new URL("/dashboard", nextUrl));
-    }
-  }
+  // No auto-redirect-to-/dashboard for /login when isLoggedIn is true: middleware can only
+  // check JWT presence (req.auth), never whether the token's organizationId/role still
+  // match the DB — it can't reach Prisma from the edge runtime this middleware runs in.
+  // A removed/switched user's still-well-formed-but-stale JWT would otherwise make this
+  // rule bounce them straight back to /dashboard, undoing getVerifiedSession()'s own
+  // /login redirect and creating an infinite loop (TEAM_REMOVAL_DESIGN.md §1 gap, found
+  // during manual staleness testing). login/page.tsx does the equivalent redirect itself,
+  // DB-aware, via getVerifiedSessionOrNull — see that file.
 
   return;
 });

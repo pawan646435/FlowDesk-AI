@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { signOut } from "next-auth/react";
 import { LayoutDashboard, Ticket, LogOut, User, Menu, X, BookOpen, Settings } from "lucide-react";
 import { useState } from "react";
+import type { Session } from "next-auth";
 
-export function Navbar() {
-  const { data: session } = useSession();
+interface NavbarProps {
+  // Passed down from the root layout's DB-verified getVerifiedSession() call, not read
+  // via next-auth/react's useSession() here — that hook only decodes the raw JWT cookie
+  // client-side, with no DB check, so it kept rendering a removed/left user as logged in
+  // even after their next page load correctly redirected the actual page content to
+  // /login. See layout.tsx for the full reasoning.
+  session: Session | null;
+}
+
+export function Navbar({ session }: NavbarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
