@@ -75,12 +75,8 @@ Deploy the Next.js serverless app on Vercel:
    - `WHATSAPP_PHONE_NUMBER_ID`
    - `WHATSAPP_APP_SECRET`
    - `WHATSAPP_VERIFY_TOKEN`
-   - `N8N_WEBHOOK_NEW_TICKET`
-   - `N8N_WEBHOOK_ESCALATION`
-   - `N8N_WEBHOOK_NEGATIVE_SENTIMENT`
-   - `N8N_WEBHOOK_RESOLUTION`
-   - `N8N_WEBHOOK_SLA_BREACH`
    - `CRON_SECRET` (Generate with `openssl rand -hex 32`; must match the `CRON_SECRET` GitHub Actions repo secret in Section 6)
+   - n8n webhook URLs are **not** set as env vars — each organization configures its own 5 webhook URLs (new ticket, escalation, negative sentiment, resolution, SLA breach) from the app's Settings page after deployment. See MULTI_TENANCY_DESIGN.md §7.
 5. Click **Deploy**.
 
 ---
@@ -101,11 +97,10 @@ n8n acts as the secondary automation service orchestrating alert notifications.
 2. Open n8n dashboard and select **Workflows > Import from File**.
 3. Import the workflows inside the `workflows/` directory:
    - `new-ticket-workflow.json`
-   - `high-priority-workflow.json`
    - `whatsapp-incoming-workflow.json`
    - `whatsapp-resolution-workflow.json`
-   - `auto-escalation-workflow.json`
-4. Set the imported webhooks to **Active**. Update your Vercel environment variables with the production n8n webhook URLs.
+   - `auto-escalation-workflow.json` — the live escalation handler. **Do not also import `workflows/deprecated/high-priority-workflow.json`** — both workflows' Webhook Trigger node use the same path (`escalate-ticket`), and n8n can only register one active webhook per path. Importing/activating both causes the losing workflow's webhook to silently fail to register (surfaces as a 404 "not registered" error when the escalation trigger fires). `high-priority-workflow.json` is kept under `workflows/deprecated/` for reference only.
+4. Set the imported webhooks to **Active**. Webhook URLs are configured per-organization from the app's Settings page (`/settings`), not as environment variables — see MULTI_TENANCY_DESIGN.md §7.
 
 ---
 
