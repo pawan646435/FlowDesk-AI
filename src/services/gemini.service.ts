@@ -219,6 +219,7 @@ const whatsappAnalysisSchema = z.object({
 export async function analyzeWhatsAppMessage(
   incomingMessage: string,
   history: WhatsAppHistoryItem[],
+  organizationId: string,
   userId?: string
 ): Promise<WhatsAppAnalysisResult> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -304,7 +305,7 @@ export async function analyzeWhatsAppMessage(
       const { default: prisma } = await import("@/lib/prisma");
 
       const queryEmbedding = await generateEmbedding(incomingMessage);
-      const matchingChunks = await searchSimilarity(queryEmbedding, 5, 0.7);
+      const matchingChunks = await searchSimilarity(queryEmbedding, organizationId, 5, 0.7);
 
       if (matchingChunks.length > 0) {
         knowledgeContext = matchingChunks
@@ -319,7 +320,7 @@ export async function analyzeWhatsAppMessage(
           : 0;
 
         let systemLogTicket = await prisma.ticket.findFirst({
-          where: { title: "RAG & System Operations Log" },
+          where: { title: "RAG & System Operations Log", organizationId },
         });
 
         if (!systemLogTicket) {
@@ -328,6 +329,7 @@ export async function analyzeWhatsAppMessage(
               title: "RAG & System Operations Log",
               description: "System log for RAG performance tracking.",
               userId,
+              organizationId,
               status: "RESOLVED",
             },
           });
@@ -336,6 +338,7 @@ export async function analyzeWhatsAppMessage(
         await prisma.activity.create({
           data: {
             userId,
+            organizationId,
             ticketId: systemLogTicket.id,
             action: `RAG_RETRIEVAL: Query='${incomingMessage.slice(0, 50)}...', ChunksFound=${matchingChunks.length}, AvgSimilarity=${avgSim.toFixed(3)}`,
           },

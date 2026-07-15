@@ -7,15 +7,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
 
   try {
-    const document = await prisma.knowledgeDocument.findUnique({
-      where: { id },
+    // MULTI_TENANCY_DESIGN.md §3: findUnique on id alone let any authenticated user from
+    // any org delete any other org's document just by guessing/observing its id. Adding
+    // organizationId to the filter means this can no longer be findUnique (id alone is no
+    // longer the sole match condition) — findFirst enforces the same ownership check.
+    const document = await prisma.knowledgeDocument.findFirst({
+      where: { id, organizationId: session.user.organizationId },
     });
 
     if (!document) {

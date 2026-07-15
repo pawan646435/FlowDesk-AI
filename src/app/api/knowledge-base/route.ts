@@ -9,17 +9,20 @@ import path from "path";
 // GET handler to list documents and aggregate analytics
 export async function GET() {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
+    // MULTI_TENANCY_DESIGN.md §3: previously returned every document in the database
+    // with no scoping at all beyond requiring some authenticated session.
     const documents = await prisma.knowledgeDocument.findMany({
+      where: { organizationId: session.user.organizationId },
       orderBy: { createdAt: "desc" },
     });
 
-    const kbStats = await getKnowledgeBaseStats();
-    const ragStats = await getRAGAnalytics(session.user.id);
+    const kbStats = await getKnowledgeBaseStats(session.user.organizationId);
+    const ragStats = await getRAGAnalytics(session.user.id, session.user.organizationId);
 
     return NextResponse.json({
       success: true,
@@ -38,7 +41,7 @@ export async function GET() {
 // POST handler to upload a document
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest) {
         fileName,
         fileType,
         status: "PENDING",
+        organizationId: session.user.organizationId,
       },
     });
 

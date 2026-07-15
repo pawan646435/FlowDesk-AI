@@ -50,13 +50,17 @@ export interface SimilaritySearchResult {
  */
 export async function searchSimilarity(
   queryEmbedding: number[],
+  organizationId: string,
   limit = 5,
   threshold = 0.7
 ): Promise<SimilaritySearchResult[]> {
   try {
     const vectorString = `[${queryEmbedding.join(",")}]`;
 
-    // Query Neon PostgreSQL pgvector similarity search
+    // Query Neon PostgreSQL pgvector similarity search, scoped to the caller's org per
+    // MULTI_TENANCY_DESIGN.md §4. There's no ANN index on embedding yet (still a brute-force
+    // scan), so this equality filter is a cheap addition that can only make the scan faster,
+    // not break any index.
     const results = await prisma.$queryRaw<SimilaritySearchResult[]>`
       SELECT
         id,
@@ -65,7 +69,7 @@ export async function searchSimilarity(
         content,
         1 - (embedding <=> ${vectorString}::vector) AS similarity
       FROM "DocumentChunk"
-      WHERE embedding IS NOT NULL AND 1 - (embedding <=> ${vectorString}::vector) >= ${threshold}
+      WHERE "organizationId" = ${organizationId} AND embedding IS NOT NULL AND 1 - (embedding <=> ${vectorString}::vector) >= ${threshold}
       ORDER BY embedding <=> ${vectorString}::vector ASC
       LIMIT ${limit}
     `;
@@ -80,11 +84,12 @@ export async function searchSimilarity(
 /**
  * Aggregates RAG performance metrics from Activity logs.
  */
-export async function getRAGAnalytics(userId: string) {
+export async function getRAGAnalytics(userId: string, organizationId: string) {
   // Query all RAG activity logs
   const ragActivities = await prisma.activity.findMany({
     where: {
       userId,
+      organizationId,
       action: { startsWith: "RAG_RETRIEVAL:" },
     },
     orderBy: { createdAt: "desc" },

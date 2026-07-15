@@ -4,7 +4,7 @@ import { generateEmbedding, searchSimilarity } from "@/services/rag.service";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session || !session.user?.id) {
+  if (!session || !session.user?.id || !session.user?.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     const queryEmbedding = await generateEmbedding(query);
-    const results = await searchSimilarity(queryEmbedding, 5, 0.5); // lower threshold for manual testing UI
+    const results = await searchSimilarity(queryEmbedding, session.user.organizationId, 5, 0.5); // lower threshold for manual testing UI
 
     return NextResponse.json({
       success: true,

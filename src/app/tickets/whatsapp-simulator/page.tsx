@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   MessageSquare,
   Send,
@@ -12,10 +13,10 @@ import {
   ShieldAlert,
   HelpCircle
 } from "lucide-react";
-import { 
-  getConversationMessages, 
-  getConversationByPhone, 
-  resetConversation 
+import {
+  getConversationMessages,
+  getConversationByPhone,
+  resetConversation
 } from "../whatsapp-actions";
 
 interface Message {
@@ -34,6 +35,8 @@ interface ConversationMetadata {
 }
 
 export default function WhatsAppSimulator() {
+  const { data: session } = useSession();
+  const organizationId = session?.user?.organizationId ?? null;
   const [phoneNumber, setPhoneNumber] = useState("+15550199");
   const [customerName, setCustomerName] = useState("Jane Doe");
   const [messageText, setMessageText] = useState("");
@@ -89,9 +92,17 @@ export default function WhatsAppSimulator() {
     if (e) e.preventDefault();
     if (!messageText.trim() || sending) return;
 
+    // The webhook route requires organizationId for simulator requests (it can't resolve
+    // one from a phone_number_id the way a real Meta webhook does) — without a loaded
+    // session there's nothing valid to send.
+    if (!organizationId) {
+      setError("Your session hasn't loaded yet (or has no organization). Try again in a moment.");
+      return;
+    }
+
     setSending(true);
     setError(null);
-    
+
     const textToSend = messageText;
     setMessageText("");
 
@@ -113,7 +124,8 @@ export default function WhatsAppSimulator() {
         body: JSON.stringify({
           phoneNumber,
           customerName,
-          text: textToSend
+          text: textToSend,
+          organizationId
         })
       });
 
@@ -421,7 +433,7 @@ export default function WhatsAppSimulator() {
               />
               <button
                 type="submit"
-                disabled={!messageText.trim() || sending}
+                disabled={!messageText.trim() || sending || !organizationId}
                 className="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white flex items-center justify-center shrink-0 shadow-md transition-colors"
               >
                 <Send className="w-4 h-4" />

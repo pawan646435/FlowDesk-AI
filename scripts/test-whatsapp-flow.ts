@@ -260,8 +260,11 @@ async function runTests() {
   if (!systemUser) {
     throw new Error("No agent user in database to resolve ticket.");
   }
+  if (!systemUser.organizationId) {
+    throw new Error("Agent user has no organizationId. Run scripts/backfill-demo-org.ts first.");
+  }
 
-  await updateTicketStatus(systemUser.id, createdTicket.id, TicketStatus.RESOLVED);
+  await updateTicketStatus(systemUser.id, systemUser.organizationId, createdTicket.id, TicketStatus.RESOLVED);
   console.log("[Test 6 Status] Ticket status changed to RESOLVED.");
 
   // Verify conversation is closed in DB
