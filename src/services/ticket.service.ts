@@ -134,10 +134,9 @@ export async function createTicket(userId: string, organizationId: string, data:
   return ticket;
 }
 
-export async function getTickets(userId: string, organizationId: string, status?: TicketStatus) {
+export async function getTickets(organizationId: string, status?: TicketStatus) {
   return prisma.ticket.findMany({
     where: {
-      userId,
       organizationId,
       ...(status ? { status } : {}),
     },
@@ -145,11 +144,10 @@ export async function getTickets(userId: string, organizationId: string, status?
   });
 }
 
-export async function getTicketById(userId: string, organizationId: string, ticketId: string) {
+export async function getTicketById(organizationId: string, ticketId: string) {
   return prisma.ticket.findFirst({
     where: {
       id: ticketId,
-      userId,
       organizationId,
     },
     include: {
@@ -165,7 +163,7 @@ export async function updateTicketStatus(userId: string, organizationId: string,
   const dbStartTime = Date.now();
 
   const ticket = await prisma.ticket.findFirst({
-    where: { id: ticketId, userId, organizationId },
+    where: { id: ticketId, organizationId },
   });
 
   if (!ticket) {
@@ -249,7 +247,7 @@ export async function updateTicketStatus(userId: string, organizationId: string,
   return updatedTicket;
 }
 
-export async function getTicketStats(userId: string, organizationId: string) {
+export async function getTicketStats(organizationId: string) {
   const [
     statusStats,
     slaBreachedStats,
@@ -262,13 +260,12 @@ export async function getTicketStats(userId: string, organizationId: string) {
     // Fetch status groupings
     prisma.ticket.groupBy({
       by: ['status'],
-      where: { userId, organizationId },
+      where: { organizationId },
       _count: { id: true },
     }),
     // Fetch active SLA breached count (exclude resolved tickets)
     prisma.ticket.count({
       where: {
-        userId,
         organizationId,
         slaBreached: true,
         status: { not: TicketStatus.RESOLVED },
@@ -278,7 +275,6 @@ export async function getTicketStats(userId: string, organizationId: string) {
     prisma.ticket.groupBy({
       by: ['category'],
       where: {
-        userId,
         organizationId,
         category: { not: null },
       },
@@ -288,7 +284,6 @@ export async function getTicketStats(userId: string, organizationId: string) {
     prisma.ticket.groupBy({
       by: ['sentiment'],
       where: {
-        userId,
         organizationId,
         sentiment: { not: null },
       },
@@ -297,10 +292,10 @@ export async function getTicketStats(userId: string, organizationId: string) {
     // WhatsApp session statistics
     prisma.whatsAppConversation.count({ where: { organizationId } }),
     prisma.ticket.count({
-      where: { userId, organizationId, source: TicketSource.WHATSAPP }
+      where: { organizationId, source: TicketSource.WHATSAPP }
     }),
     prisma.ticket.count({
-      where: { userId, organizationId, source: TicketSource.WEB }
+      where: { organizationId, source: TicketSource.WEB }
     })
   ]);
 
@@ -328,7 +323,7 @@ export async function getTicketStats(userId: string, organizationId: string) {
   }));
 
   const { getSLADashboardStats } = await import("@/services/sla.service");
-  const slaStats = await getSLADashboardStats(userId, organizationId);
+  const slaStats = await getSLADashboardStats(organizationId);
 
   return {
     total,
@@ -345,10 +340,9 @@ export async function getTicketStats(userId: string, organizationId: string) {
   };
 }
 
-export async function getQueueTickets(userId: string, organizationId: string) {
+export async function getQueueTickets(organizationId: string) {
   return prisma.ticket.findMany({
     where: {
-      userId,
       organizationId,
       status: { not: TicketStatus.RESOLVED },
     },

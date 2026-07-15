@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import { getTicketById } from "@/services/ticket.service";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
@@ -10,14 +10,16 @@ interface PageProps {
 }
 
 export default async function TicketDetailsPage({ params }: PageProps) {
-  const session = await auth();
-
-  if (!session || !session.user?.id || !session.user?.organizationId) {
-    redirect("/login");
+  // JOIN_REQUEST_DESIGN.md §3.3 — same pattern as dashboard/page.tsx.
+  const initialSession = await getVerifiedSession({ onStale: "redirect", requireOrg: false });
+  if (!initialSession.user.organizationId) {
+    redirect("/onboarding");
   }
 
+  const session = await getVerifiedSession();
+
   const resolvedParams = await params;
-  const ticket = await getTicketById(session.user.id, session.user.organizationId, resolvedParams.id);
+  const ticket = await getTicketById(session.user.organizationId, resolvedParams.id);
 
   if (!ticket) {
     notFound();

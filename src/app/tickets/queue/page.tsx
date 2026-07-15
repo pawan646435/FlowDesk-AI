@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { getVerifiedSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getQueueTickets } from "@/services/ticket.service";
@@ -8,13 +8,15 @@ import type { Prisma } from "@prisma/client";
 type QueueTicket = Prisma.TicketGetPayload<{ include: { user: true } }>;
 
 export default async function QueuePage() {
-  const session = await auth();
-
-  if (!session || !session.user?.id || !session.user?.organizationId) {
-    redirect("/login");
+  // JOIN_REQUEST_DESIGN.md §3.3 — same pattern as dashboard/page.tsx.
+  const initialSession = await getVerifiedSession({ onStale: "redirect", requireOrg: false });
+  if (!initialSession.user.organizationId) {
+    redirect("/onboarding");
   }
 
-  const tickets = await getQueueTickets(session.user.id, session.user.organizationId);
+  const session = await getVerifiedSession();
+
+  const tickets = await getQueueTickets(session.user.organizationId);
 
   // Group tickets: Section A (HIGH or CRITICAL) vs Section B (LOW, MEDIUM, or null)
   const highPriorityTickets = tickets.filter(
