@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { ArrowRight, Shield, Zap, Smartphone, Sparkles } from "lucide-react";
+import { ArrowRight, Shield, Zap, Smartphone, Sparkles, Building2, LogIn } from "lucide-react";
 
 export default async function LandingPage() {
   const session = await auth();
@@ -31,22 +31,58 @@ export default async function LandingPage() {
             A production-ready ticketing platform supercharged with stateful n8n automation, real-time AI categorization, sentiment alerts, intelligent support summaries, and now fully integrated with stateful **WhatsApp Support**.
           </p>
           
-          <div className="mt-10 flex items-center gap-x-6">
-            <Link
-              href={session ? "/dashboard" : "/login"}
-              className="group flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3 text-sm font-semibold shadow-lg hover:bg-primary/90 transition-all glow-purple cursor-pointer"
-            >
-              {session ? "Go to Dashboard" : "Get Started Now"}
-              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-            </Link>
-            
-            <a
-              href="#features"
-              className="text-sm font-semibold leading-6 text-foreground hover:text-primary transition-colors cursor-pointer"
-            >
-              Learn more <span aria-hidden="true">→</span>
-            </a>
-          </div>
+          {session ? (
+            <div className="mt-10 flex items-center gap-x-6">
+              <Link
+                href="/dashboard"
+                className="group flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3 text-sm font-semibold shadow-lg hover:bg-primary/90 transition-all glow-purple cursor-pointer"
+              >
+                Go to Dashboard
+                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
+
+              <a
+                href="#features"
+                className="text-sm font-semibold leading-6 text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
+                Learn more <span aria-hidden="true">→</span>
+              </a>
+            </div>
+          ) : (
+            <div className="mt-10 space-y-6">
+              {/* ORG_ONBOARDING_DESIGN.md §3.2 — two equally-weighted CTAs, not a
+                  primary/secondary pair. "Sign in" appears first when stacked on mobile
+                  (§3.2's reasoning: returning users will be more common than new-org
+                  creators once the product has existing customers). No third "employee
+                  login" option — see §3.3: first-time employee access is gated by a
+                  specific invite token, not a generic login path, so a generic button
+                  aimed at that group would be actively misleading, not just redundant. */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <Link
+                  href="/login"
+                  className="group flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3 text-sm font-semibold shadow-lg hover:bg-primary/90 transition-all glow-purple cursor-pointer"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign in
+                </Link>
+
+                <Link
+                  href="/create-organization"
+                  className="group flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-5 py-3 text-sm font-semibold shadow-lg hover:bg-primary/90 transition-all glow-purple cursor-pointer"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Create your organization
+                </Link>
+              </div>
+
+              <a
+                href="#features"
+                className="block text-sm font-semibold leading-6 text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
+                Learn more <span aria-hidden="true">→</span>
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Hero Features Grid */}
