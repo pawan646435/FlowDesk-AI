@@ -187,8 +187,10 @@ export default function WhatsAppSimulator() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Control Panel: Col 4 */}
-        <div className="lg:col-span-5 bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-6">
+        {/* Left Control Panel: Col 4. order-2 puts it below the phone mockup on mobile
+            (lg:order-none restores source order — this column first — at the lg breakpoint
+            where the two sit side by side instead of stacked). */}
+        <div className="order-2 lg:order-none lg:col-span-5 bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-6">
           <div className="border-b border-zinc-800 pb-4">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <Phone className="w-5 h-5 text-emerald-400" />
@@ -334,9 +336,10 @@ export default function WhatsAppSimulator() {
           </div>
         </div>
 
-        {/* Right Phone Mockup: Col 7 */}
-        <div className="lg:col-span-7 flex justify-center">
-          <div className="w-full max-w-[420px] aspect-[9/18] min-h-[580px] bg-zinc-950 border-[8px] border-zinc-800 rounded-[3rem] shadow-2xl relative flex flex-col overflow-hidden ring-4 ring-zinc-900">
+        {/* Right Phone Mockup: Col 7. order-1 puts it above the controls panel on mobile
+            (lg:order-none restores source order at the lg breakpoint). */}
+        <div className="order-1 lg:order-none lg:col-span-7 flex justify-center">
+          <div className="w-full max-w-[420px] aspect-[9/18] min-h-[420px] sm:min-h-[580px] bg-zinc-950 border-[8px] border-zinc-800 rounded-[3rem] shadow-2xl relative flex flex-col overflow-hidden ring-4 ring-zinc-900">
             
             {/* Phone Speaker & Camera Notch */}
             <div className="absolute top-0 inset-x-0 h-6 bg-zinc-800 flex justify-center z-20">

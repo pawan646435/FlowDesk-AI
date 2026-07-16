@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
@@ -18,6 +19,23 @@ type VerifiedSession = Session & { user: Session["user"] & { organizationId: str
 // JOIN_REQUEST_DESIGN.md §3.1 — the requireOrg: false variant's return shape. organizationId
 // may genuinely be null here (an authenticated-but-orgless user), unlike VerifiedSession above.
 type VerifiedSessionAnyOrg = Session & { user: Session["user"] & { organizationId: string | null; role: Session["user"]["role"] } };
+
+// Navigation-slowness audit: most protected pages call getVerifiedSession() twice per
+// request (once with requireOrg: false to distinguish "no session" from "session, no
+// org", once with the real requireOrg: true check) — two logically-identical-per-request
+// DB lookups by the same user id, each paying a full network round trip to Neon (~300-
+// 400ms warm, measured). React's cache() deduplicates a function's calls *within a single
+// request's render pass* when called with the same arguments — it does not change when or
+// why the check runs, and does not persist anything across requests, so this cannot
+// reintroduce the stale-session bug (a fresh request always gets a fresh, uncached call).
+// Keyed on userId alone (not the full options object, which differs between the two call
+// sites) so both calls in one request hit the same cache entry.
+const getCurrentUserOrgAndRole = cache((userId: string) => {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { organizationId: true, role: true },
+  });
+});
 
 /**
  * For pages: resolves the session, verifies session.user.id is present, and (unless
@@ -56,11 +74,10 @@ export async function getVerifiedSession(
 
   // Single indexed lookup (User.id is the primary key) — the cheapest possible read,
   // and it's added at a point every one of these call sites was already about to run at
-  // least one org-scoped Prisma query anyway.
-  const current = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true, role: true },
-  });
+  // least one org-scoped Prisma query anyway. Wrapped in React's cache() (see
+  // getCurrentUserOrgAndRole above) so the second getVerifiedSession() call most pages
+  // make in the same request reuses this result instead of paying a second DB round trip.
+  const current = await getCurrentUserOrgAndRole(session.user.id);
 
   const isStale =
     !current ||

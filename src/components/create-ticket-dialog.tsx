@@ -49,7 +49,7 @@ export function CreateTicketDialog() {
           <h3 className="text-xl font-semibold">Create Support Ticket</h3>
           <button
             onClick={closeModal}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+            className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>

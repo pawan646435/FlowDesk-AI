@@ -87,7 +87,7 @@ export default async function LandingPage() {
 
         {/* Hero Features Grid */}
         <div className="mx-auto mt-16 flex max-w-2xl sm:mt-24 lg:ml-10 lg:mr-0 lg:mt-0 lg:max-w-none lg:flex-none xl:ml-20">
-          <div className="max-w-3xl flex-none sm:max-w-5xl lg:max-w-none">
+          <div className="w-full max-w-3xl sm:max-w-5xl lg:max-w-none">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:w-[36rem]">
               <div className="p-6 rounded-2xl glass border border-border/40 hover:border-primary/20 transition-all hover:-translate-y-1 duration-300">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 mb-4">

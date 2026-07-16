@@ -231,7 +231,7 @@ export default function WhatsAppHistoryPage() {
       )}
 
       {/* Main Inbox Interface */}
-      <div className="grid grid-cols-1 md:grid-cols-12 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl min-h-[640px] aspect-[16/9]">
+      <div className="grid grid-cols-1 md:grid-cols-12 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl min-h-[400px] md:min-h-[640px] md:aspect-[16/9]">
         
         {/* Left Side: Conversation List (Col 4) */}
         <div className="md:col-span-4 border-r border-zinc-800 flex flex-col h-full bg-zinc-950/50">
