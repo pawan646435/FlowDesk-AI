@@ -61,7 +61,7 @@ export default async function SettingsPage() {
               .map((invite) => (
                 <div
                   key={invite.id}
-                  className="flex items-center justify-between rounded-xl border border-border/40 bg-background/30 px-4 py-3"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-border/40 bg-background/30 px-4 py-3"
                 >
                   <div className="min-w-0">
                     <p className="font-semibold text-foreground truncate">{invite.organization.name}</p>
@@ -69,7 +69,7 @@ export default async function SettingsPage() {
                   </div>
                   <Link
                     href={`/accept-invite?token=${invite.token}`}
-                    className="flex items-center gap-1.5 shrink-0 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:bg-primary/90 transition-all cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 shrink-0 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-xs font-semibold hover:bg-primary/90 transition-all cursor-pointer"
                   >
                     View
                     <ArrowRight className="h-3 w-3" />
@@ -94,7 +94,7 @@ export default async function SettingsPage() {
             {pendingJoinRequests.map((request) => (
               <div
                 key={request.id}
-                className="flex items-center justify-between rounded-xl border border-border/40 bg-background/30 px-4 py-3"
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-border/40 bg-background/30 px-4 py-3"
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground truncate">
@@ -169,7 +169,7 @@ export default async function SettingsPage() {
           {members.map((member) => (
             <div
               key={member.id}
-              className="flex items-center justify-between px-6 py-4"
+              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4"
             >
               <div className="min-w-0">
                 <p className="font-semibold text-foreground truncate">

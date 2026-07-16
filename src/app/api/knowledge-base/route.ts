@@ -17,13 +17,16 @@ export async function GET() {
   try {
     // MULTI_TENANCY_DESIGN.md §3: previously returned every document in the database
     // with no scoping at all beyond requiring some authenticated session.
-    const documents = await prisma.knowledgeDocument.findMany({
-      where: { organizationId: session.user.organizationId },
-      orderBy: { createdAt: "desc" },
-    });
-
-    const kbStats = await getKnowledgeBaseStats(session.user.organizationId);
-    const ragStats = await getRAGAnalytics(session.user.id, session.user.organizationId);
+    // Independent queries — none depend on another's result — so they run concurrently
+    // instead of the sequential awaits this handler used to have.
+    const [documents, kbStats, ragStats] = await Promise.all([
+      prisma.knowledgeDocument.findMany({
+        where: { organizationId: session.user.organizationId },
+        orderBy: { createdAt: "desc" },
+      }),
+      getKnowledgeBaseStats(session.user.organizationId),
+      getRAGAnalytics(session.user.id, session.user.organizationId),
+    ]);
 
     return NextResponse.json({
       success: true,

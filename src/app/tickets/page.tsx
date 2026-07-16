@@ -146,7 +146,7 @@ export default async function TicketsPage({ searchParams }: PageProps) {
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {ticket.description}
                   </p>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-1">
                     <span>ID: {ticket.id}</span>
                     <span>•</span>
                     <span>Created: {new Date(ticket.createdAt).toLocaleDateString()}</span>

@@ -42,7 +42,7 @@ export function JoinRequestActionButtons({ requestId, requesterName }: JoinReque
           type="button"
           onClick={handleApprove}
           disabled={isPending}
-          className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1.5 text-xs font-semibold hover:bg-emerald-500/20 transition-colors disabled:opacity-50 cursor-pointer"
+          className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-2.5 text-xs font-semibold hover:bg-emerald-500/20 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
           Approve
@@ -51,7 +51,7 @@ export function JoinRequestActionButtons({ requestId, requesterName }: JoinReque
           type="button"
           onClick={handleReject}
           disabled={isPending}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 cursor-pointer"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
           Reject
