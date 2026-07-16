@@ -43,14 +43,3 @@ export function validateConfig() {
 
 // Run validation immediately on module load
 validateConfig();
-
-export const config = {
-  databaseUrl: process.env.DATABASE_URL || "",
-  authSecret: process.env.AUTH_SECRET || "",
-  geminiApiKey: process.env.GEMINI_API_KEY || "",
-  whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN || "",
-  whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
-  whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
-  whatsappBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
-  whatsappAppSecret: process.env.WHATSAPP_APP_SECRET || "",
-};

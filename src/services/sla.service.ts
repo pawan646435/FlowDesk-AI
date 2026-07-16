@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import { TicketPriority, TicketStatus } from "@prisma/client";
-import { triggerSlaBreachWebhook } from "./n8n.service";
+import { triggerSlaBreachWebhook, getOrgWebhookConfigsByOrgIds } from "./n8n.service";
 
 /**
  * Calculates response and resolution SLA deadlines based on priority.
@@ -56,7 +56,16 @@ export async function checkSLABreaches() {
 
   console.log(`[SLA Monitor] Found ${breachedTickets.length} candidate breached tickets.`);
 
+  // Batch-fetch webhook configs for every org represented among the candidates, once,
+  // instead of one OrganizationWebhookConfig lookup per ticket inside the loop below —
+  // the sweep is deliberately global (per §7) and commonly spans many orgs in one run.
+  const candidateOrgIds = breachedTickets
+    .map((t) => t.organizationId)
+    .filter((id): id is string => id !== null);
+  const webhookConfigsByOrgId = await getOrgWebhookConfigsByOrgIds(candidateOrgIds);
+
   let claimedCount = 0;
+  const claimedActivities: { userId: string; organizationId: string | null; ticketId: string; action: string }[] = [];
 
   for (const ticket of breachedTickets) {
     // Determine which limit was breached (first response or resolution)
@@ -86,25 +95,25 @@ export async function checkSLABreaches() {
 
     claimedCount++;
 
-    // Create system log activity. organizationId comes straight off the ticket row
-    // already fetched by the (deliberately global, per §7) sweep above — no scoping
+    // Queue system log activity for a single batched createMany after the loop, rather
+    // than one activity.create per ticket. organizationId comes straight off the ticket
+    // row already fetched by the (deliberately global, per §7) sweep above — no scoping
     // is added to the sweep's own query, only to the Activity row it writes.
-    await prisma.activity.create({
-      data: {
-        userId: ticket.userId,
-        organizationId: ticket.organizationId,
-        ticketId: ticket.id,
-        action: `SLA BREACHED: Ticket passed target deadline by ${breachDurationMin} minutes.`,
-      },
+    claimedActivities.push({
+      userId: ticket.userId,
+      organizationId: ticket.organizationId,
+      ticketId: ticket.id,
+      action: `SLA BREACHED: Ticket passed target deadline by ${breachDurationMin} minutes.`,
     });
 
-    // Trigger n8n webhook. A null organizationId (pre-backfill legacy ticket) has no
-    // OrganizationWebhookConfig to look up, so skip cleanly rather than error — same
-    // outcome as an org that simply hasn't configured this webhook.
+    // Trigger n8n webhook using the pre-fetched config map. A null organizationId
+    // (pre-backfill legacy ticket) has no OrganizationWebhookConfig to look up, so skip
+    // cleanly rather than error — same outcome as an org that simply hasn't configured
+    // this webhook.
     if (ticket.organizationId) {
       try {
         const customerName = ticket.whatsAppConversation?.customerName || ticket.user.name || "System User";
-        await triggerSlaBreachWebhook(ticket.organizationId, {
+        await triggerSlaBreachWebhook(webhookConfigsByOrgId.get(ticket.organizationId) ?? null, {
           ticketId: ticket.id,
           priority: ticket.priority || TicketPriority.LOW,
           category: ticket.category || "GENERAL_INQUIRY",
@@ -117,6 +126,10 @@ export async function checkSLABreaches() {
     } else {
       console.log(`[SLA Monitor] Ticket ${ticket.id} has no organizationId, skipping SLA breach webhook.`);
     }
+  }
+
+  if (claimedActivities.length > 0) {
+    await prisma.activity.createMany({ data: claimedActivities });
   }
 
   return claimedCount;
@@ -169,39 +182,35 @@ export async function getSLADashboardStats(organizationId: string) {
     ? Math.round((resolvedCompliantCount / resolvedCount) * 100)
     : 100;
 
-  // Calculate Average Response Time for responded tickets
-  const ticketsWithResponse = await prisma.ticket.findMany({
-    where: {
-      organizationId,
-      firstResponseMet: true,
-    },
-    include: {
-      activities: {
-        orderBy: { createdAt: "asc" },
-      },
-    },
-  });
+  // Average Response Time for responded tickets — computed at the database level. For
+  // each ticket with firstResponseMet: true, "first response" is the earliest Activity
+  // whose action isn't one of the three system-generated prefixes (ticket creation, AI
+  // analysis, workflow-trigger logging); response time is that activity's createdAt minus
+  // the ticket's own createdAt, averaged in minutes across every ticket that has such an
+  // activity at all. Previously this fetched every matching ticket's *entire* activities
+  // relation into memory (DB audit + dashboard Suspense investigation both flagged this as
+  // the single slowest query on the dashboard) just to do this same MIN-then-average
+  // reduction in JS — the LATERAL join below does the identical per-ticket "earliest
+  // qualifying activity" lookup Postgres-side and returns only the final numbers.
+  const [responseTimeResult] = await prisma.$queryRaw<{ avgMinutes: number | null; respondedCount: bigint }[]>`
+    SELECT
+      AVG(EXTRACT(EPOCH FROM (first_response."firstResponseAt" - t."createdAt")) / 60) AS "avgMinutes",
+      COUNT(*) AS "respondedCount"
+    FROM "Ticket" t
+    INNER JOIN LATERAL (
+      SELECT MIN(a."createdAt") AS "firstResponseAt"
+      FROM "Activity" a
+      WHERE a."ticketId" = t.id
+        AND a.action NOT LIKE 'Created ticket%'
+        AND a.action NOT LIKE 'AI Analysis%'
+        AND a.action NOT LIKE 'Workflow Triggered%'
+    ) first_response ON first_response."firstResponseAt" IS NOT NULL
+    WHERE t."organizationId" = ${organizationId}
+      AND t."firstResponseMet" = true
+  `;
 
-  let totalMinutes = 0;
-  let respondedCount = 0;
-
-  for (const ticket of ticketsWithResponse) {
-    const firstResponse = ticket.activities.find(
-      (a) =>
-        !a.action.startsWith("Created ticket") &&
-        !a.action.startsWith("AI Analysis") &&
-        !a.action.startsWith("Workflow Triggered")
-    );
-
-    if (firstResponse) {
-      const diffMs = firstResponse.createdAt.getTime() - ticket.createdAt.getTime();
-      totalMinutes += diffMs / (60 * 1000);
-      respondedCount++;
-    }
-  }
-
-  const averageResponseTime = respondedCount > 0
-    ? Math.round(totalMinutes / respondedCount)
+  const averageResponseTime = responseTimeResult?.avgMinutes != null
+    ? Math.round(Number(responseTimeResult.avgMinutes))
     : 0; // in minutes
 
   return {

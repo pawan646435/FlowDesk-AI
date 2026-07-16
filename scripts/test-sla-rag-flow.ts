@@ -25,7 +25,7 @@ async function runTests() {
     });
   }
   if (!testUser.organizationId) {
-    throw new Error("Test user has no organizationId. Run scripts/backfill-demo-org.ts first.");
+    throw new Error("Test user has no organizationId. Sign in and create/join an organization first.");
   }
   const userId = testUser.id;
   const organizationId = testUser.organizationId;

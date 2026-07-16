@@ -144,6 +144,25 @@ export async function getTickets(organizationId: string, status?: TicketStatus) 
   });
 }
 
+// Dashboard's Recent Tickets widget only ever renders id/title/priority/description/
+// status/updatedAt on the 5 most recently updated tickets — narrowed select + take
+// instead of getTickets's full-row, full-org fetch followed by an in-memory slice(0, 5).
+export async function getRecentTickets(organizationId: string, take = 5) {
+  return prisma.ticket.findMany({
+    where: { organizationId },
+    orderBy: { updatedAt: "desc" },
+    take,
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      updatedAt: true,
+    },
+  });
+}
+
 export async function getTicketById(organizationId: string, ticketId: string) {
   return prisma.ticket.findFirst({
     where: {
@@ -322,9 +341,13 @@ export async function getTicketStats(organizationId: string) {
     count: s._count.id,
   }));
 
-  const { getSLADashboardStats } = await import("@/services/sla.service");
-  const slaStats = await getSLADashboardStats(organizationId);
-
+  // Dashboard perf audit: getSLADashboardStats (an unrelated over-fetch flagged separately
+  // in the DB audit — it pulls every responded ticket's full activities relation just to
+  // compute one average) is 2-3x slower than every other query this function used to
+  // bundle together, consistently, not a one-off. It no longer lives inside this function's
+  // own Promise.all/await chain — dashboard/page.tsx fetches it separately now, so the fast
+  // aggregates here (used by the stat cards, category/sentiment breakdown, and WhatsApp
+  // analytics) aren't stuck waiting on it before any of them can render.
   return {
     total,
     open,
@@ -336,7 +359,6 @@ export async function getTicketStats(organizationId: string) {
     whatsAppConversationCount,
     whatsAppTicketsCount,
     webTicketsCount,
-    sla: slaStats
   };
 }
 
@@ -347,7 +369,11 @@ export async function getQueueTickets(organizationId: string) {
       status: { not: TicketStatus.RESOLVED },
     },
     include: {
-      user: true,
+      // TicketQueueCard only ever renders user.name and user.email — the rest of the
+      // User row (image, emailVerified, organizationId, role, timestamps) is unused here.
+      user: {
+        select: { name: true, email: true },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

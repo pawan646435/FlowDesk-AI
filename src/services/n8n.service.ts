@@ -128,6 +128,28 @@ async function getOrgWebhookConfig(organizationId: string) {
   return prisma.organizationWebhookConfig.findUnique({ where: { organizationId } });
 }
 
+export type OrgWebhookConfig = Awaited<ReturnType<typeof getOrgWebhookConfig>>;
+
+/**
+ * Batch variant of getOrgWebhookConfig for callers that need configs for several orgs at
+ * once (the SLA breach sweep spans every org in one run, per its deliberately-global
+ * scope) — one query for all of them instead of one findUnique per org. Orgs with no
+ * OrganizationWebhookConfig row simply have no entry in the returned map, same
+ * "unconfigured, skip cleanly" outcome as getOrgWebhookConfig returning null.
+ */
+export async function getOrgWebhookConfigsByOrgIds(
+  organizationIds: string[]
+): Promise<Map<string, OrgWebhookConfig>> {
+  const uniqueIds = [...new Set(organizationIds)];
+  if (uniqueIds.length === 0) return new Map();
+
+  const configs = await prisma.organizationWebhookConfig.findMany({
+    where: { organizationId: { in: uniqueIds } },
+  });
+
+  return new Map(configs.map((config) => [config.organizationId, config]));
+}
+
 export async function triggerNewTicketWebhook(organizationId: string, payload: WebhookPayload) {
   const config = await getOrgWebhookConfig(organizationId);
   return triggerWebhook("New Ticket", config?.newTicketUrl, payload);
@@ -156,8 +178,12 @@ export interface SlaBreachWebhookPayload {
   breachDuration: string;
 }
 
-export async function triggerSlaBreachWebhook(organizationId: string, payload: SlaBreachWebhookPayload) {
-  const config = await getOrgWebhookConfig(organizationId);
+/**
+ * config is pre-fetched by the caller (getOrgWebhookConfigsByOrgIds) rather than looked
+ * up here — the SLA breach sweep is the only caller, and it spans every org in one run,
+ * so it batches the config lookup once up front instead of once per ticket.
+ */
+export async function triggerSlaBreachWebhook(config: OrgWebhookConfig, payload: SlaBreachWebhookPayload) {
   // Falls back to this org's own escalation URL if it has no dedicated SLA breach URL
   // configured — same fallback relationship the global-env-var version had between
   // N8N_WEBHOOK_SLA_BREACH and N8N_WEBHOOK_ESCALATION, just scoped to one org now
