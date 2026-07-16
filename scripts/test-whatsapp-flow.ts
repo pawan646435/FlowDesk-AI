@@ -261,7 +261,7 @@ async function runTests() {
     throw new Error("No agent user in database to resolve ticket.");
   }
   if (!systemUser.organizationId) {
-    throw new Error("Agent user has no organizationId. Run scripts/backfill-demo-org.ts first.");
+    throw new Error("Agent user has no organizationId. Sign in and create/join an organization first.");
   }
 
   await updateTicketStatus(systemUser.id, systemUser.organizationId, createdTicket.id, TicketStatus.RESOLVED);

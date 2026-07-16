@@ -1,7 +1,9 @@
 import { getVerifiedSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getTicketStats, getTickets } from "@/services/ticket.service";
+import { Suspense } from "react";
+import { getTicketStats, getRecentTickets } from "@/services/ticket.service";
+import { getSLADashboardStats } from "@/services/sla.service";
 import { getRecentActivities } from "@/services/activity.service";
 import {
   getOrganizationMembersWithOpenTicketCount,
@@ -33,10 +35,21 @@ export default async function DashboardPage() {
   // fetching and just not rendering — no reason to run the extra groupBy/lookups on
   // every MEMBER dashboard load. Reuses the exact session.user.role === "OWNER" pattern
   // already established on /settings — no new gating mechanism.
-  const [stats, activities, tickets, members, webhookConfig, whatsAppMapping, pendingInvites] = await Promise.all([
+  //
+  // getSLADashboardStats is deliberately NOT in this Promise.all. Perf audit (measured
+  // against the dev DB, repeated runs): it consistently takes 2-3x longer than every other
+  // query here (an existing over-fetch — pulls every responded ticket's full activities
+  // relation to compute one average — flagged separately, not fixed here). Every other
+  // query below lands in the same ~600ms-2s band, so bundling it in would make the whole
+  // page wait on the one outlier. It's passed as a still-pending Promise into a Suspense
+  // boundary instead, so the page shell and every other section render as soon as they're
+  // ready and only the SLA metrics card streams in after.
+  const slaStatsPromise = getSLADashboardStats(organizationId);
+
+  const [stats, activities, recentTickets, members, webhookConfig, whatsAppMapping, pendingInvites] = await Promise.all([
     getTicketStats(organizationId),
     getRecentActivities(organizationId, 5),
-    getTickets(organizationId),
+    getRecentTickets(organizationId, 5),
     isOwner ? getOrganizationMembersWithOpenTicketCount(organizationId) : Promise.resolve(null),
     isOwner ? getOrganizationWebhookConfig(organizationId) : Promise.resolve(null),
     isOwner ? getWhatsAppNumberMapping(organizationId) : Promise.resolve(null),
@@ -49,8 +62,6 @@ export default async function DashboardPage() {
   const otherOrgPendingInviteCount = pendingInvites.filter(
     (inv) => inv.organizationId !== organizationId
   ).length;
-
-  const recentTickets = tickets.slice(0, 5);
 
   const statsCards = [
     {
@@ -164,48 +175,14 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      {/* SLA & Performance Overview */}
-      <div className="rounded-2xl border border-border/40 glass p-6 space-y-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Clock className="h-5 w-5 text-indigo-400" />
-          SLA & Performance Metrics
-        </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
-            <span className="text-xs text-muted-foreground font-semibold block">Active SLAs</span>
-            <span className="text-2xl font-extrabold text-foreground mt-1.5 block">
-              {stats.sla?.activeSlas || 0}
-            </span>
-            <span className="text-[10px] text-muted-foreground block mt-1">Monitored active items</span>
-          </div>
-
-          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
-            <span className="text-xs text-muted-foreground font-semibold block">Breached SLAs</span>
-            <span className={`text-2xl font-extrabold mt-1.5 block ${
-              (stats.sla?.breachedSlas || 0) > 0 ? "text-rose-400" : "text-foreground"
-            }`}>
-              {stats.sla?.breachedSlas || 0}
-            </span>
-            <span className="text-[10px] text-muted-foreground block mt-1">Exceeded target timeline</span>
-          </div>
-
-          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
-            <span className="text-xs text-muted-foreground font-semibold block">SLA Compliance Rate</span>
-            <span className="text-2xl font-extrabold text-emerald-400 mt-1.5 block">
-              {stats.sla?.complianceRate ?? 100}%
-            </span>
-            <span className="text-[10px] text-muted-foreground block mt-1">Target resolution met</span>
-          </div>
-
-          <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
-            <span className="text-xs text-muted-foreground font-semibold block">Avg Agent Response</span>
-            <span className="text-2xl font-extrabold text-foreground mt-1.5 block">
-              {stats.sla?.averageResponseTime || 0} min
-            </span>
-            <span className="text-[10px] text-muted-foreground block mt-1">From ticket creation</span>
-          </div>
-        </div>
-      </div>
+      {/* SLA & Performance Overview — streamed in separately via Suspense. Perf audit
+          measurement: getSLADashboardStats consistently takes 2-3x longer than every other
+          dashboard query, so this card's own loading skeleton renders immediately while it
+          resolves, instead of holding the entire page (already-ready stat cards, recent
+          tickets, activity feed, OWNER widgets) back until this one query finishes. */}
+      <Suspense fallback={<SLAMetricsSkeleton />}>
+        <SLAMetricsSection slaStatsPromise={slaStatsPromise} />
+      </Suspense>
 
       {/* AI Analytics Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -589,6 +566,83 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Split out as its own async Server Component so it can sit inside a Suspense boundary —
+// awaiting slaStatsPromise here is what lets Next.js render SLAMetricsSkeleton immediately
+// and stream this section in once getSLADashboardStats actually resolves.
+async function SLAMetricsSection({
+  slaStatsPromise,
+}: {
+  slaStatsPromise: ReturnType<typeof getSLADashboardStats>;
+}) {
+  const slaStats = await slaStatsPromise;
+
+  return (
+    <div className="rounded-2xl border border-border/40 glass p-6 space-y-4">
+      <h3 className="text-lg font-semibold flex items-center gap-2">
+        <Clock className="h-5 w-5 text-indigo-400" />
+        SLA & Performance Metrics
+      </h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+          <span className="text-xs text-muted-foreground font-semibold block">Active SLAs</span>
+          <span className="text-2xl font-extrabold text-foreground mt-1.5 block">
+            {slaStats.activeSlas || 0}
+          </span>
+          <span className="text-[10px] text-muted-foreground block mt-1">Monitored active items</span>
+        </div>
+
+        <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+          <span className="text-xs text-muted-foreground font-semibold block">Breached SLAs</span>
+          <span className={`text-2xl font-extrabold mt-1.5 block ${
+            slaStats.breachedSlas > 0 ? "text-rose-400" : "text-foreground"
+          }`}>
+            {slaStats.breachedSlas || 0}
+          </span>
+          <span className="text-[10px] text-muted-foreground block mt-1">Exceeded target timeline</span>
+        </div>
+
+        <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+          <span className="text-xs text-muted-foreground font-semibold block">SLA Compliance Rate</span>
+          <span className="text-2xl font-extrabold text-emerald-400 mt-1.5 block">
+            {slaStats.complianceRate ?? 100}%
+          </span>
+          <span className="text-[10px] text-muted-foreground block mt-1">Target resolution met</span>
+        </div>
+
+        <div className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+          <span className="text-xs text-muted-foreground font-semibold block">Avg Agent Response</span>
+          <span className="text-2xl font-extrabold text-foreground mt-1.5 block">
+            {slaStats.averageResponseTime || 0} min
+          </span>
+          <span className="text-[10px] text-muted-foreground block mt-1">From ticket creation</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Matches SLAMetricsSection's layout exactly (same 4-column grid, same card shape) so
+// there's no layout shift when the real data streams in — just the numbers appearing.
+function SLAMetricsSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border/40 glass p-6 space-y-4">
+      <h3 className="text-lg font-semibold flex items-center gap-2">
+        <Clock className="h-5 w-5 text-indigo-400" />
+        SLA & Performance Metrics
+      </h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        {["Active SLAs", "Breached SLAs", "SLA Compliance Rate", "Avg Agent Response"].map((label) => (
+          <div key={label} className="rounded-xl border border-border/20 bg-zinc-950/20 p-4">
+            <span className="text-xs text-muted-foreground font-semibold block">{label}</span>
+            <span className="mt-1.5 block h-8 w-16 animate-pulse rounded bg-foreground/10" />
+            <span className="text-[10px] text-muted-foreground block mt-1 opacity-50">Loading…</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

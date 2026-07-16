@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { createOrganizationAction } from "./actions";
 import { Building2, Loader2, Plus, X, UserPlus } from "lucide-react";
 import { INDUSTRY_OPTIONS, SIZE_OPTIONS } from "@/lib/company-options";
-import { MAX_TEAMMATE_INVITES } from "@/lib/validation";
+import { MAX_TEAMMATE_INVITES } from "@/lib/constants";
 
 export default function CreateOrganizationPage() {
   const [state, formAction, isPending] = useActionState(createOrganizationAction, null);

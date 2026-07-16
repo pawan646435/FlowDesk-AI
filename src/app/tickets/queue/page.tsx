@@ -5,7 +5,7 @@ import { getQueueTickets } from "@/services/ticket.service";
 import { ArrowLeft, Inbox, ShieldAlert, Sparkles, User, Tag, Clock, Eye } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 
-type QueueTicket = Prisma.TicketGetPayload<{ include: { user: true } }>;
+type QueueTicket = Prisma.TicketGetPayload<{ include: { user: { select: { name: true; email: true } } } }>;
 
 export default async function QueuePage() {
   // JOIN_REQUEST_DESIGN.md §3.3 — same pattern as dashboard/page.tsx.

@@ -108,6 +108,14 @@ model Ticket {
   @@index([firstResponseDueAt])
   @@index([resolutionDueAt])
   @@index([organizationId])
+  // Query audit: status/category/sentiment are always filtered together with
+  // organizationId (getTickets, getQueueTickets, getTicketStats's breakdowns) — composite
+  // indexes match that access pattern. firstResponseMet stays unindexed deliberately: a
+  // low-cardinality boolean used only in the SLA cron's global (non-org-scoped) sweep,
+  // where the real fix is batching the sweep's per-ticket work, not an index.
+  @@index([organizationId, status])
+  @@index([organizationId, category])
+  @@index([organizationId, sentiment])
 }
 
 model Activity {
